@@ -62,7 +62,7 @@ if os.path.exists(_ARTIFACT_PATH):
     try:
         data = joblib.load(_ARTIFACT_PATH)
         df_inf = data.get("df_for_inf")
-        # df_inf['game_category'] = df_inf['game_category'].str.lower()
+        df_inf['game_category'] = df_inf['game_category'].str.lower()
         print(df_inf['game_category'])
         if isinstance(df_inf, pd.DataFrame):
             df_inf.columns = df_inf.columns.map(str)
@@ -92,7 +92,7 @@ def _load_daily_stats_df(app):
         df_daily = pd.read_sql_table(DailyStats.__tablename__, con=db.engine)
     df_daily.columns = df_daily.columns.map(str)
     df_daily.drop(columns=['tags'], errors='ignore', inplace=True)
-    # df_daily['game_category'] = df_daily['game_category'].str.lower()
+    df_daily['game_category'] = df_daily['game_category'].str.lower()
     return df_daily
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +171,7 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
         'days_since_previous_stream','game_category','stream_duration'
     ]
     features = base_feats + hist_cols
-    # df['game_category'] = df['game_category'].str.lower()
+    df['game_category'] = df['game_category'].str.lower()
     # print(df['game_category'].tail())
     return df, features, hist_cols
 
@@ -215,7 +215,7 @@ def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, _ = _prepare_training_frame(df_daily)
     y = df_clean['total_subscriptions']
     X = df_clean[feats]
-    cutoff = df_clean["stream_date"].quantile(1.0)
+    cutoff = df_clean["stream_date"].quantile(0.9)
     train_mask = df_clean["stream_date"] < cutoff
     X_train, X_test = X[train_mask], X[~train_mask]
     y_train, y_test = y[train_mask], y[~train_mask]
