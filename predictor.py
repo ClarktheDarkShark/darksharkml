@@ -142,7 +142,10 @@ def _add_historical_rollups(df: pd.DataFrame):
     return df, hist_cols
 
 def _prepare_training_frame(df_daily: pd.DataFrame):
-    df = _drop_unused_columns(df_daily).dropna()
+    df = _drop_unused_columns(df_daily)
+    df = df[df['stream_duration'] >= 1]
+    df = df.dropna()
+
     df["stream_date"] = pd.to_datetime(df["stream_date"])
     if "stream_start_time" in df:
         df["stream_start_time"] = pd.to_datetime(
@@ -206,18 +209,20 @@ def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, _ = _prepare_training_frame(df_daily)
     y = df_clean['total_subscriptions']
     X = df_clean[feats]
-    cutoff = df_clean["stream_date"].quantile(0.8)
+    cutoff = df_clean["stream_date"].quantile(0.9)
     train_mask = df_clean["stream_date"] < cutoff
     X_train, X_test = X[train_mask], X[~train_mask]
     y_train, y_test = y[train_mask], y[~train_mask]
+
+    # print(X_train)
 
     pipeline = _build_pipeline(X)
     from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
     tscv = TimeSeriesSplit(n_splits=5)
     params = {
-        "reg__n_estimators": [10, 50],
-        "reg__max_depth":    [1, 3, 5],
-        "reg__max_features": [1, 3, 7],
+        "reg__n_estimators": [10, 50, 100],
+        "reg__max_depth":    [1, 3, 5, 7, 20],
+        "reg__max_features":[1, 3, 7, 10]
     }
     model = GridSearchCV(
         estimator=pipeline,
@@ -264,6 +269,8 @@ def train_predictor(app, *, log_metrics: bool = True):
         "trained_on":                  datetime.utcnow(),
         "metrics":                     metrics,
     })
+    print()
+    print('Metrics:', metrics)
     if log_metrics:
         logging.info("Predictor trained: %s", metrics)
     return metrics
