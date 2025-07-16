@@ -89,6 +89,7 @@ def _load_daily_stats_df(app):
         df_daily = pd.read_sql_table(DailyStats.__tablename__, con=db.engine)
     df_daily.columns = df_daily.columns.map(str)
     df_daily.drop(columns=['tags'], errors='ignore', inplace=True)
+    df_daily['stream_name'] = df_daily['stream_name'].str.lower()
     return df_daily
 
 # ─────────────────────────────────────────────────────────────────────────────
