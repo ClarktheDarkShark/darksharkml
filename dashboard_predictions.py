@@ -152,6 +152,8 @@ def show_predictions():
     # --- call predictor ---
     # We pass the *display* stream name because predictor df_for_inf stores original casing.
     # However if training lowercased stream_name, you can switch to stream_lc here.
+
+    top_df = top_df[top_df['game_category'].str.lower() == sel_game_lc]
     top_df = _infer_grid_for_game(
         pipe,
         df_for_inf,   # original full df; predictor expects original col names
@@ -165,7 +167,7 @@ def show_predictions():
     )
 
     # safety: if user typed game but we fell back, filter again
-    top_df = top_df[top_df['game_category'].str.lower() == sel_game_lc]
+    
 
     # ensure y_pred present; ensure conf present (fallback to NaN)
     if 'conf' not in top_df.columns:
