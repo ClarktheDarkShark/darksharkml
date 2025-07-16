@@ -413,7 +413,7 @@ def predgame(
     **kwargs
 ):
     _ensure_trained(app)
-    print('...', _predictor_state["df_for_inf"])
+    print('******', _predictor_state["df_for_inf"])
     return _infer_grid_for_game(
         _predictor_state["pipeline"],
         _predictor_state["df_for_inf"],
@@ -432,6 +432,7 @@ def predhour(
     **kwargs
 ):
     _ensure_trained(app)
+    print('******', _predictor_state["df_for_inf"])
     return _infer_grid_for_game(
         _predictor_state["pipeline"],
         _predictor_state["df_for_inf"],
