@@ -1,5 +1,6 @@
 # dashboard_predictions.py
 from flask import Blueprint, render_template_string, request
+import pandas as pd
 
 from predictor import (
     get_predictor_artifacts,
