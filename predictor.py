@@ -89,7 +89,7 @@ def _load_daily_stats_df(app):
         df_daily = pd.read_sql_table(DailyStats.__tablename__, con=db.engine)
     df_daily.columns = df_daily.columns.map(str)
     df_daily.drop(columns=['tags'], errors='ignore', inplace=True)
-    df_daily['stream_name'] = df_daily['stream_name'].str.lower()
+    df_daily['game_category'] = df_daily['game_category'].str.lower()
     return df_daily
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -168,6 +168,7 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
         'days_since_previous_stream','game_category','stream_duration'
     ]
     features = base_feats + hist_cols
+    print(df.tail())
     return df, features, hist_cols
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -351,6 +352,7 @@ def get_predictor_artifacts():
             stream_duration_opts,
             metrics)
     """
+
     return (
         _predictor_state["pipeline"],
         _predictor_state["df_for_inf"],
