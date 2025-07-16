@@ -54,6 +54,7 @@ _predictor_state = {
     "metrics": {},                         # dict of training metrics
 }
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # ATTEMPT TO LOAD PRE‐TRAINED ARTIFACTS (skip on‐dyno training)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -62,7 +63,7 @@ if os.path.exists(_ARTIFACT_PATH):
         data = joblib.load(_ARTIFACT_PATH)
         df_inf = data.get("df_for_inf")
         df_inf['game_category'] = df_inf['game_category'].str.lower()
-        print(df_inf)
+        print(df_inf['game_category'])
         if isinstance(df_inf, pd.DataFrame):
             df_inf.columns = df_inf.columns.map(str)
         _predictor_state.update({
