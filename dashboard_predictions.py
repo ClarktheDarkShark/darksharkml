@@ -1,11 +1,9 @@
-# dashboard_predictions.py
-
 from flask import Blueprint, render_template_string, request
 
-# pull trained artifacts from the predictor cog
+# pull trained artifacts from the predictor module
 from predictor import (
     get_predictor_artifacts,
-    _infer_grid_for_game,   # internal helper; fine to import
+    _infer_grid_for_game,
 )
 
 dash_preds = Blueprint('dash_preds', __name__, url_prefix='/predictions')
@@ -66,26 +64,47 @@ def show_predictions():
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
 
-    stream = request.args.get('stream', 'thelegendyagami')
-    game   = request.args.get('game', None)
-    top_n  = int(request.args.get('top_n', 10))
+    # pull & normalize query params
+    stream = request.args.get('stream', 'thelegendyagami').strip().lower()
+    game   = request.args.get('game', '').strip().lower()
+    try:
+        top_n = int(request.args.get('top_n', 10))
+    except ValueError:
+        top_n = 10
 
     if not ready:
         return render_template_string(
             TEMPLATE,
             ready=False,
             stream=stream,
-            game=game or "",
+            game=game,
             top_n=top_n,
             predictions=[],
         )
 
-    if not game:
-        try:
-            game = df_for_inf[df_for_inf["stream_name"] == stream].iloc[-1]["game_category"]
-        except IndexError:
-            game = ""
+    # ensure our stored df_for_inf uses lowercase for matching
+    df_for_inf['stream_name']   = df_for_inf['stream_name'].str.lower()
+    df_for_inf['game_category'] = df_for_inf['game_category'].str.lower()
+    cat_opts = [c.lower() for c in (cat_opts or [])]
 
+    # make sure the stream exists
+    if stream not in df_for_inf['stream_name'].unique():
+        return render_template_string(
+            TEMPLATE,
+            ready=True,
+            stream=stream,
+            game=game,
+            top_n=top_n,
+            predictions=[],
+        )
+
+    # choose a valid game
+    if not game or game not in cat_opts:
+        # default to that stream’s last recorded game
+        last_game = df_for_inf[df_for_inf['stream_name'] == stream]['game_category'].iloc[-1]
+        game = last_game.lower()
+
+    # run inference restricted to that game
     top_df = _infer_grid_for_game(
         pipe,
         df_for_inf,
@@ -93,19 +112,19 @@ def show_predictions():
         stream_name=stream,
         start_times=start_opts,
         durations=dur_opts,
-        category_options=[game] if game else cat_opts,
+        category_options=[game],
         top_n=top_n,
         unique_scores=True,
     )
 
-    if game:
-        top_df = top_df[top_df['game_category'] == game]
-
+    # format for rendering
     disp = top_df.copy()
     disp['Time']          = disp['start_time_hour'].astype(int).map(lambda h: f"{h:02d}:00")
     disp['Duration']      = disp['stream_duration'].astype(int)
     disp['Expected_Subs'] = disp['y_pred'].round().astype(int)
     disp['Confidence']    = disp['conf'].round(1)
+
+    records = disp[['Time','Duration','Expected_Subs','Confidence']].to_dict(orient='records')
 
     return render_template_string(
         TEMPLATE,
@@ -113,5 +132,5 @@ def show_predictions():
         stream=stream,
         game=game,
         top_n=top_n,
-        predictions=disp[['Time','Duration','Expected_Subs','Confidence']].to_dict(orient='records'),
+        predictions=records,
     )
