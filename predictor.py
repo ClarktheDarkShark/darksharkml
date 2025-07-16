@@ -282,6 +282,7 @@ def train_predictor(app, *, log_metrics: bool = True):
 # INFERENCE HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 def _get_last_row_for_stream(df_for_inf: pd.DataFrame, stream_name: str):
+    print(df_for_inf)
     rows = df_for_inf[df_for_inf["stream_name"] == stream_name]
     print(rows)
     if rows.empty:
