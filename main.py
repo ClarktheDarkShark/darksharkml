@@ -1,22 +1,19 @@
 import os
 from flask import Flask
 from db import db
-from predictor import train_predictor
 from dashboard_predictions import dash_preds
 
 def create_app():
     app = Flask(__name__)
 
-    # ── Grab the URL and patch the scheme if needed ─────────────────────────
+    # ── Database configuration (pointed via DATABASE_URL) ───────────────────
     db_url = os.environ.get('DATABASE_URL', '')
     if db_url.startswith('postgres://'):
-        # SQLAlchemy expects postgresql://
         db_url = db_url.replace('postgres://', 'postgresql://', 1)
-
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    # ── Initialize DB & blueprints ────────────────────────────────────────
+    # ── Initialize DB and Blueprints ────────────────────────────────────────
     db.init_app(app)
     app.register_blueprint(dash_preds)
 
@@ -24,11 +21,11 @@ def create_app():
         # create tables if you’re not running migrations
         db.create_all()
 
-        # train the predictor
-        train_predictor(app)
+        # no more train_predictor(app) here!
 
     return app
 
+# expose the app to Gunicorn
 app = create_app()
 
 if __name__ == '__main__':
