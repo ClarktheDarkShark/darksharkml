@@ -284,9 +284,9 @@ def _train_model(df_daily: pd.DataFrame):
     tscv = TimeSeriesSplit(n_splits=5)
 
     params = {
-        "reg__n_estimators": [10, 50, 100],
-        "reg__max_depth":    [1, 3, 5, 7],
-        "reg__max_features": [1, 3, 7, 10],
+        "reg__n_estimators": [10, 50],
+        "reg__max_depth":    [1, 3, 5],
+        "reg__max_features": [1, 3, 7],
     }
 
     model = GridSearchCV(
