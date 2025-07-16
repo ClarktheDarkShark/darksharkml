@@ -283,6 +283,7 @@ def train_predictor(app, *, log_metrics: bool = True):
 # ─────────────────────────────────────────────────────────────────────────────
 def _get_last_row_for_stream(df_for_inf: pd.DataFrame, stream_name: str):
     rows = df_for_inf[df_for_inf["stream_name"] == stream_name]
+    print(rows)
     if rows.empty:
         raise ValueError(f"No rows found for stream_name={stream_name!r}.")
     return rows.iloc[-1]
