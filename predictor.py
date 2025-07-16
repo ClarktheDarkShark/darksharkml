@@ -168,7 +168,7 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
         'days_since_previous_stream','game_category','stream_duration'
     ]
     features = base_feats + hist_cols
-    print(df.tail())
+    print(df['game_category'].tail())
     return df, features, hist_cols
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -299,47 +299,74 @@ def _infer_grid_for_game(
     unique_scores: bool = True,
     start_hour_filter: Optional[int] = None,
 ):
+    """
+    Build an inference grid anchored on the last row for the specified stream_name.
+    Returns a DataFrame sorted by predicted subs desc, with a 'conf' column.
+    """
     if pipeline is None:
         raise RuntimeError("Predictor pipeline is not trained.")
+
     if today_name is None:
         today_name = datetime.now().strftime("%A")
 
+    # grab the most recent features for this stream
     last_row = _get_last_row_for_stream(df_for_inf, stream_name)
     base = last_row.to_frame().T
 
+    # determine which categories to try
     if category_options is None:
         category_options = sorted(df_for_inf["game_category"].dropna().unique().tolist())
-        restrict = True
+        restrict_to_stream_game = True
     else:
         category_options = list(category_options)
-        restrict = False
+        restrict_to_stream_game = False
 
-    start_times = start_times or DEFAULT_START_TIMES
-    durations   = durations   or DEFAULT_DURATIONS_HRS
-    combos = itertools.product(category_options, start_times, durations)
-    grid   = pd.DataFrame(combos, columns=['game_category','start_time_hour','stream_duration'])
+    if start_times is None:
+        start_times = DEFAULT_START_TIMES
+    if durations is None:
+        durations = DEFAULT_DURATIONS_HRS
 
-    rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
-    for c in ['game_category','start_time_hour','stream_duration']:
-        rep[c] = grid[c]
-    rep["day_of_week"] = today_name
+    # build the grid of (game, hour, duration)
+    combos = list(itertools.product(category_options, start_times, durations))
+    grid = pd.DataFrame(combos, columns=['game_category','start_time_hour','stream_duration'])
 
-    X_inf = rep[features]
+    # replicate base row and overwrite dynamic columns
+    base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
+    for col in ['game_category','start_time_hour','stream_duration']:
+        base_rep[col] = grid[col]
+    base_rep["day_of_week"] = today_name
+
+    # extract features and predict
+    X_inf = base_rep[features]
     preds = pipeline.predict(X_inf)
 
+    # --- compute per‐tree std‐dev as a confidence score ---
+    pre = pipeline.named_steps['pre']
+    rf  = pipeline.named_steps['reg']
+    X_pre = pre.transform(X_inf)
+    all_tree_preds = np.stack([t.predict(X_pre) for t in rf.estimators_], axis=1)
+    conf = all_tree_preds.std(axis=1)
+
+    # assemble results
     results = X_inf.copy()
-    results["y_pred"] = preds
+    results['y_pred'] = preds
+    results['conf']  = conf
 
-    if restrict:
-        results = results[results["game_category"] == last_row["game_category"]]
+    # legacy: if user didn’t supply category_options, restrict back to last game
+    if restrict_to_stream_game:
+        game_cat = last_row["game_category"]
+        results = results[results['game_category'] == game_cat]
+
     if start_hour_filter is not None:
-        results = results[results["start_time_hour"] == start_hour_filter]
+        results = results[results['start_time_hour'] == start_hour_filter]
 
-    results = results.sort_values("y_pred", ascending=False)
+    results = results.sort_values('y_pred', ascending=False)
+
     if unique_scores:
-        results = results.drop_duplicates(subset=["y_pred"], keep="first")
+        results = results.drop_duplicates(subset=['y_pred'], keep='first')
 
     return results.head(top_n).reset_index(drop=True)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DASHBOARD EXPORTS

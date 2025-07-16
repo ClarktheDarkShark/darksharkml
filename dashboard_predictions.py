@@ -42,6 +42,7 @@ TEMPLATE = """
           <th>Start Time</th>
           <th>Duration (hrs)</th>
           <th>Expected Subs</th>
+          <th>Confidence</th>
         </tr>
       </thead>
       <tbody>
@@ -50,6 +51,7 @@ TEMPLATE = """
           <td>{{ row.Time }}</td>
           <td>{{ row.Duration }}</td>
           <td>{{ row.Expected_Subs }}</td>
+          <td>{{ row.Confidence }}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -61,13 +63,11 @@ TEMPLATE = """
 
 @dash_preds.route('/', methods=['GET'])
 def show_predictions():
-    # fetch trained artifacts from predictor cog
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
 
-    # query params
-    stream = request.args.get('stream', 'thelegendyagami')  # default: your main channel
-    game   = request.args.get('game', None)                  # optional override
+    stream = request.args.get('stream', 'thelegendyagami')
+    game   = request.args.get('game', None)
     top_n  = int(request.args.get('top_n', 10))
 
     if not ready:
@@ -80,14 +80,12 @@ def show_predictions():
             predictions=[],
         )
 
-    # if caller didn't supply a game, use the last recorded game_category for the stream
-    if game is None or game == "":
+    if not game:
         try:
             game = df_for_inf[df_for_inf["stream_name"] == stream].iloc[-1]["game_category"]
         except IndexError:
             game = ""
 
-    # run inference grid (uses last row history for `stream`)
     top_df = _infer_grid_for_game(
         pipe,
         df_for_inf,
@@ -95,20 +93,19 @@ def show_predictions():
         stream_name=stream,
         start_times=start_opts,
         durations=dur_opts,
-        category_options=[game] if game else cat_opts,  # restrict if user selected game
+        category_options=[game] if game else cat_opts,
         top_n=top_n,
         unique_scores=True,
     )
 
-    # If user specified a game explicitly, be extra sure we filter to it
     if game:
         top_df = top_df[top_df['game_category'] == game]
 
-    # format for template
     disp = top_df.copy()
     disp['Time']          = disp['start_time_hour'].astype(int).map(lambda h: f"{h:02d}:00")
     disp['Duration']      = disp['stream_duration'].astype(int)
     disp['Expected_Subs'] = disp['y_pred'].round().astype(int)
+    disp['Confidence']    = disp['conf'].round(1)
 
     return render_template_string(
         TEMPLATE,
@@ -116,5 +113,5 @@ def show_predictions():
         stream=stream,
         game=game,
         top_n=top_n,
-        predictions=disp[['Time','Duration','Expected_Subs']].to_dict(orient='records'),
+        predictions=disp[['Time','Duration','Expected_Subs','Confidence']].to_dict(orient='records'),
     )
