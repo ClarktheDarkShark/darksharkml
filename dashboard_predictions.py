@@ -12,7 +12,7 @@ from predictor import (
 # ─────────────────────────────────────────────────────────────────────────────
 # FLASK APP & BLUEPRINT SETUP
 # ─────────────────────────────────────────────────────────────────────────────
-app = Flask(__name__)
+# app = Flask(__name__)
 
 dash = Blueprint('dash', __name__, url_prefix='')  # mount at root
 
@@ -234,9 +234,3 @@ def show_predictions():
         message=message,
     )
 
-# Register blueprint and start app
-app.register_blueprint(dash)
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
