@@ -351,7 +351,8 @@ def _infer_grid_for_game(
     rf  = pipeline.named_steps['reg']
     X_pre = pre.transform(X_inf)
     all_tree_preds = np.stack([t.predict(X_pre) for t in rf.estimators_], axis=1)
-    conf = all_tree_preds.std(axis=1)
+    sigma = all_tree_preds.std(axis=1)
+    conf = 1.0 / (1.0 + sigma)
 
     # assemble results
     results = X_inf.copy()
