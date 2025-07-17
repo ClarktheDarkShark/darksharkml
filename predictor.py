@@ -186,7 +186,8 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
 # ─────────────────────────────────────────────────────────────────────────────
 def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, _ = _prepare_training_frame(df_daily)
-    y = df_clean['total_subscriptions']
+    # y = df_clean['total_subscriptions']
+    y = df_clean['net_follower_change']
     X = df_clean[feats]
     cutoff = df_clean["stream_date"].quantile(1.0)
     train_mask = df_clean["stream_date"] < cutoff

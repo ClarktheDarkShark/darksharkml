@@ -2,6 +2,10 @@
 
 import pandas as pd
 import numpy as np
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
+from sklearn.ensemble import RandomForestRegressor
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PIPELINE BUILD
@@ -12,10 +16,6 @@ def _build_pipeline(X: pd.DataFrame):
     numeric_cols     = [c for c in numeric_cols_all if c not in bool_cols]
     categorical_cols = [c for c in X.select_dtypes(include=['object','category']).columns
                         if c!='day_of_week']
-    from sklearn.pipeline import Pipeline
-    from sklearn.compose import ColumnTransformer
-    from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
-    from sklearn.ensemble import RandomForestRegressor
 
     ordered_days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
     preprocessor = ColumnTransformer(transformers=[
@@ -39,4 +39,5 @@ def _build_pipeline(X: pd.DataFrame):
         n_estimators=200, max_depth=5, max_features=0.8,
         bootstrap=True, random_state=42, n_jobs=-1
     )
+
     return Pipeline([('pre', preprocessor), ('reg', rf)])
