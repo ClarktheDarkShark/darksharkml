@@ -31,6 +31,7 @@ import pandas as pd
 
 from sklearn.metrics import mean_absolute_error, make_scorer
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
+from sklearn.compose import TransformedTargetRegressor
 
 from db import db
 from models import DailyStats, TimeSeries  # TimeSeries kept for possible future extension
@@ -366,6 +367,9 @@ def _infer_grid_for_game(
     pre = pipeline.named_steps['pre']
     rf  = pipeline.named_steps['reg']
     X_pre = pre.transform(X_inf)
+    if isinstance(model, TransformedTargetRegressor):
+        model = model.regressor_
+
     all_tree_preds = np.stack([t.predict(X_pre) for t in rf.estimators_], axis=1)
     sigma = all_tree_preds.std(axis=1)
     conf = 1.0 / (1.0 + sigma)
