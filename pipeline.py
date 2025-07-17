@@ -1,0 +1,42 @@
+# pipeline.py
+
+import pandas as pd
+import numpy as np
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PIPELINE BUILD
+# ─────────────────────────────────────────────────────────────────────────────
+def _build_pipeline(X: pd.DataFrame):
+    bool_cols        = X.select_dtypes(include=['bool']).columns.tolist()
+    numeric_cols_all = X.select_dtypes(include=[np.number]).columns.tolist()
+    numeric_cols     = [c for c in numeric_cols_all if c not in bool_cols]
+    categorical_cols = [c for c in X.select_dtypes(include=['object','category']).columns
+                        if c!='day_of_week']
+    from sklearn.pipeline import Pipeline
+    from sklearn.compose import ColumnTransformer
+    from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
+    from sklearn.ensemble import RandomForestRegressor
+
+    ordered_days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+    preprocessor = ColumnTransformer(transformers=[
+        ('num', MinMaxScaler(), numeric_cols),
+        ('bool','passthrough', bool_cols),
+        ('dow', OrdinalEncoder(
+                    categories=[ordered_days],
+                    dtype=int,
+                    handle_unknown='use_encoded_value',
+                    unknown_value=-1),
+         ['day_of_week']),
+        ('cat', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1),
+         categorical_cols),
+    ])
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # MODELS
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    rf = RandomForestRegressor(
+        n_estimators=200, max_depth=5, max_features=0.8,
+        bootstrap=True, random_state=42, n_jobs=-1
+    )
+    return Pipeline([('pre', preprocessor), ('reg', rf)])

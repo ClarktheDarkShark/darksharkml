@@ -27,9 +27,11 @@ from typing import Iterable, List, Optional
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.metrics import mean_absolute_error, make_scorer
 
 from db import db
 from models import DailyStats, TimeSeries  # TimeSeries kept for possible future extension
+from pipeline import _build_pipeline
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG
@@ -174,38 +176,7 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
 
     return df, features, hist_cols
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PIPELINE BUILD
-# ─────────────────────────────────────────────────────────────────────────────
-def _build_pipeline(X: pd.DataFrame):
-    bool_cols        = X.select_dtypes(include=['bool']).columns.tolist()
-    numeric_cols_all = X.select_dtypes(include=[np.number]).columns.tolist()
-    numeric_cols     = [c for c in numeric_cols_all if c not in bool_cols]
-    categorical_cols = [c for c in X.select_dtypes(include=['object','category']).columns
-                        if c!='day_of_week']
-    from sklearn.pipeline import Pipeline
-    from sklearn.compose import ColumnTransformer
-    from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
-    from sklearn.ensemble import RandomForestRegressor
 
-    ordered_days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
-    preprocessor = ColumnTransformer(transformers=[
-        ('num', MinMaxScaler(), numeric_cols),
-        ('bool','passthrough', bool_cols),
-        ('dow', OrdinalEncoder(
-                    categories=[ordered_days],
-                    dtype=int,
-                    handle_unknown='use_encoded_value',
-                    unknown_value=-1),
-         ['day_of_week']),
-        ('cat', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1),
-         categorical_cols),
-    ])
-    rf = RandomForestRegressor(
-        n_estimators=200, max_depth=5, max_features=0.8,
-        bootstrap=True, random_state=42, n_jobs=-1
-    )
-    return Pipeline([('pre', preprocessor), ('reg', rf)])
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TRAINING (GridSearchCV)
@@ -223,23 +194,32 @@ def _train_model(df_daily: pd.DataFrame):
 
     pipeline = _build_pipeline(X)
     from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
-    tscv = TimeSeriesSplit(n_splits=5)
+    tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
+
     params = {
-        "reg__n_estimators": [10, 50, 100],
-        "reg__max_depth":    [1, 3, 5, 7, 20],
-        "reg__max_features":[1, 3, 7, 10]
+        "reg__n_estimators":    [200, 600, 1000],
+        "reg__min_samples_leaf":[1, 3, 5, 10],
+        "reg__min_samples_split":[2, 5, 10],
+        "reg__max_features":    ['sqrt', 0.5, 0.8, 1.0]
+    }
+    scoring = {
+        'R2': 'r2',
+        'MAE': make_scorer(mean_absolute_error, greater_is_better=False),
+        'RMSE': 'neg_root_mean_squared_error',
     }
     model = GridSearchCV(
         estimator=pipeline,
         param_grid=params,
         cv=tscv,
-        scoring="r2",
+        scoring=scoring,
+        refit='MAE',        # pick the metric you care about; MAE more stable
         n_jobs=-1,
-        refit=True,
+        verbose=1,
+        error_score='raise',  # fail fast if something breaks
     )
     model.fit(X_train, y_train)
 
-    from sklearn.metrics import mean_absolute_error
+    
     test_r2      = model.score(X_test, y_test)
     y_pred_test  = model.predict(X_test)
     const_base   = np.full_like(y_test, y_train.mean())
