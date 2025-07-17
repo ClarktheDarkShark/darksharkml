@@ -384,9 +384,8 @@ def _infer_grid_for_game(
     if isinstance(model, TransformedTargetRegressor):
         model = model.regressor_
 
-    # all_tree_preds = np.stack([t.predict(X_pre) for t in model.estimators_], axis=1)
-    sigma = all_tree_preds.std(axis=1)
-    conf = 1.0 / (1.0 + sigma)
+    # sigma = all_tree_preds.std(axis=1)
+    # conf = 1.0 / (1.0 + sigma)
 
     # assemble results
     results = X_inf.copy()
