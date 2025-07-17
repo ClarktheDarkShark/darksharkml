@@ -8,7 +8,7 @@ from predictor import (
     _infer_grid_for_game,   # internal helper; used for dashboard inference
 )
 
-dash_preds = Blueprint('dash_preds', __name__, url_prefix='/predictions')
+dash_preds = Blueprint('dash_preds', __name__, url_prefix='/')
 
 
 TEMPLATE = """

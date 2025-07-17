@@ -27,7 +27,10 @@ from typing import Iterable, List, Optional
 import joblib
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+
 from sklearn.metrics import mean_absolute_error, make_scorer
+from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 
 from db import db
 from models import DailyStats, TimeSeries  # TimeSeries kept for possible future extension
@@ -190,10 +193,12 @@ def _train_model(df_daily: pd.DataFrame):
     X_train, X_test = X[train_mask], X[~train_mask]
     y_train, y_test = y[train_mask], y[~train_mask]
 
+    # plot_features(feats, X_train, y_train, train_mask, df_clean)
+
     print('Training sample size:',X_train.shape)
 
     pipeline = _build_pipeline(X)
-    from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
+    
     tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
 
     params = {
@@ -429,6 +434,29 @@ def format_pred_rows(df: pd.DataFrame, include_hour: bool = True) -> str:
         else:
             parts.append(f"h{int(r.stream_duration)} → {r.y_pred:.1f}")
     return " | ".join(parts)
+
+
+def plot_features(feats, X_train, y_train, train_mask, df_clean):
+    feature = feats[0]  # ← replace with whichever column you want
+    plt.figure(figsize=(8, 5))
+    plt.scatter(X_train[feature], y_train, alpha=0.6)
+    plt.xlabel(feature)
+    plt.ylabel("total_subscriptions")
+    plt.title(f"total_subscriptions vs. {feature}")
+    plt.tight_layout()
+    plt.show()
+
+    # 2) Plot subscriptions over time:
+    dates = df_clean.loc[train_mask, "stream_date"]
+    plt.figure(figsize=(10, 4))
+    plt.plot(dates, y_train, marker="o", linestyle="-")
+    plt.xlabel("stream_date")
+    plt.ylabel("total_subscriptions")
+    plt.title("Subscriptions over Time (Training Set)")
+    plt.gcf().autofmt_xdate()
+    plt.tight_layout()
+    plt.show()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SCRIPT ENTRYPOINT
