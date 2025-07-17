@@ -6,6 +6,11 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.experimental import enable_hist_gradient_boosting  # noqa
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.compose import TransformedTargetRegressor
+from sklearn.preprocessing import FunctionTransformer
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PIPELINE BUILD
@@ -40,4 +45,14 @@ def _build_pipeline(X: pd.DataFrame):
         bootstrap=True, random_state=42, n_jobs=-1
     )
 
-    return Pipeline([('pre', preprocessor), ('reg', rf)])
+    hgb = HistGradientBoostingRegressor(
+        early_stopping=True,
+        validation_fraction=0.2,
+        random_state=42
+    )
+    transformer = FunctionTransformer(np.log1p, np.expm1, check_inverse=False)
+
+    # 3) wrap HGB in TransformedTargetRegressor
+    hgb = TransformedTargetRegressor(regressor=hgb, transformer=transformer)
+
+    return Pipeline([('pre', preprocessor), ('reg', hgb)]), 'hgb'

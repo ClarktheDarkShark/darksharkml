@@ -189,25 +189,53 @@ def _train_model(df_daily: pd.DataFrame):
     y = df_clean['total_subscriptions']
     # y = df_clean['net_follower_change']
     X = df_clean[feats]
-    cutoff = df_clean["stream_date"].quantile(1.0)
+    cutoff = df_clean["stream_date"].quantile(0.8)
     train_mask = df_clean["stream_date"] < cutoff
     X_train, X_test = X[train_mask], X[~train_mask]
     y_train, y_test = y[train_mask], y[~train_mask]
+
+    # import matplotlib.pyplot as plt
+    # plt.hist(y_train, bins=20, alpha=0.6, label='train')
+    # plt.hist(y_test,  bins=20, alpha=0.6, label='test')
+    # plt.legend(); plt.title("Subscriptions: train vs test")
+    # plt.show()
 
     # plot_features(feats, X_train, y_train, train_mask, df_clean)
 
     print('Training sample size:',X_train.shape)
 
-    pipeline = _build_pipeline(X)
+    pipeline, mod = _build_pipeline(X_train)
     
     tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
 
-    params = {
-        "reg__n_estimators":    [200, 600, 1000],
-        "reg__min_samples_leaf":[1, 3, 5, 10],
-        "reg__min_samples_split":[2, 5, 10],
-        "reg__max_features":    ['sqrt', 0.5, 0.8, 1.0]
-    }
+    if mod == 'rf':
+        params = {
+            "reg__n_estimators":    [200, 600, 1000],
+            "reg__min_samples_leaf":[3, 5, 10, 50],
+            "reg__min_samples_split":[5, 10, 50],
+            "reg__max_features":    ['sqrt', 0.5, 0.8, 1.0],
+            "reg__max_depth": [None, 5, 10]
+        }
+    elif mod == 'hgb':
+        params = [
+            # Poisson‐loss grid
+            {
+            'reg__regressor__loss': ['poisson'],
+            'reg__regressor__learning_rate':    [0.05, 0.1, 0.2],
+            'reg__regressor__max_leaf_nodes':   [31, 63, 80],
+            'reg__regressor__l2_regularization':[0.1, 1.0, 10.0],
+            }
+            # Tweedie‐loss grid (if your sklearn version supports it)
+            # {
+            # 'reg__regressor__loss': ['tweedie'],
+            # 'reg__regressor__power':          [1.1, 1.5, 1.9],
+            # 'reg__regressor__learning_rate':  [0.01, 0.05, 0.1],
+            # 'reg__regressor__max_leaf_nodes': [15, 31, 63],
+            # 'reg__regressor__l2_regularization':[0.0, 0.1, 1.0, 10.0],
+            # },
+        ]
+
+
     scoring = {
         'R2': 'r2',
         'MAE': make_scorer(mean_absolute_error, greater_is_better=False),
@@ -236,6 +264,10 @@ def _train_model(df_daily: pd.DataFrame):
         "const_mae":   float(mean_absolute_error(y_test, const_base)),
         "model_mae":   float(mean_absolute_error(y_test, y_pred_test)),
     }
+    print()
+    print()
+    for m in metrics:
+        print(m, metrics[m])
 
     df_for_inf = df_clean[['stream_name'] + feats].copy()
     return model, model.best_estimator_, df_for_inf, feats, metrics
@@ -260,8 +292,7 @@ def train_predictor(app, *, log_metrics: bool = True):
         "trained_on":                  datetime.utcnow(),
         "metrics":                     metrics,
     })
-    print()
-    print('Metrics:', metrics)
+
     if log_metrics:
         logging.info("Predictor trained: %s", metrics)
     return metrics
