@@ -374,17 +374,23 @@ def _infer_grid_for_game(
     else:
         model = model
 
-    # compute per‐tree std‐dev for forests; else fallback to NaN
     if hasattr(model, 'estimators_'):
         all_tree_preds = np.stack([t.predict(X_pre) for t in model.estimators_], axis=1)
-        conf = np.std(all_tree_preds, axis=1)
+        sigma = all_tree_preds.std(axis=1)
+
+    # 2) Otherwise, if it supports staged_predict, use that
+    elif hasattr(model, 'staged_predict'):
+        # staged_predict yields a generator of length n_estimators,
+        # each array is shape (n_samples,)
+        staged = np.stack(list(model.staged_predict(X_pre)), axis=1)
+        sigma = staged.std(axis=1)
+
+    # 3) Otherwise, fallback to zero‐variance
     else:
-        conf = np.full(len(X_pre), np.nan)
-    
+        sigma = np.zeros(len(X_pre))
 
-
-    # sigma = all_tree_preds.std(axis=1)
-    # conf = 1.0 / (1.0 + sigma)
+    # turn σ into your old “confidence” metric
+    conf = 1.0 / (1.0 + sigma)
 
     # assemble results
     results = X_inf.copy()
