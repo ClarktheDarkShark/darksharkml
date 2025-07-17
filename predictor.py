@@ -63,7 +63,6 @@ if os.path.exists(_ARTIFACT_PATH):
         data = joblib.load(_ARTIFACT_PATH)
         df_inf = data.get("df_for_inf")
         df_inf['game_category'] = df_inf['game_category'].str.lower()
-        print(df_inf['game_category'])
         if isinstance(df_inf, pd.DataFrame):
             df_inf.columns = df_inf.columns.map(str)
         _predictor_state.update({
@@ -172,7 +171,7 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
     ]
     features = base_feats + hist_cols
     df['game_category'] = df['game_category'].str.lower()
-    # print(df['game_category'].tail())
+
     return df, features, hist_cols
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -220,7 +219,7 @@ def _train_model(df_daily: pd.DataFrame):
     X_train, X_test = X[train_mask], X[~train_mask]
     y_train, y_test = y[train_mask], y[~train_mask]
 
-    # print(X_train)
+    print('Training sample size:',X_train.shape)
 
     pipeline = _build_pipeline(X)
     from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
@@ -285,9 +284,9 @@ def train_predictor(app, *, log_metrics: bool = True):
 # INFERENCE HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 def _get_last_row_for_stream(df_for_inf: pd.DataFrame, stream_name: str):
-    print(df_for_inf)
+    # print(df_for_inf)
     rows = df_for_inf[df_for_inf["stream_name"] == stream_name]
-    print(rows)
+    # print(rows)
     if rows.empty:
         raise ValueError(f"No rows found for stream_name={stream_name!r}.")
     return rows.iloc[-1]
@@ -386,7 +385,7 @@ def get_predictor_artifacts():
             stream_duration_opts,
             metrics)
     """
-    print('GET ->',_predictor_state["df_for_inf"])
+    
     return (
         _predictor_state["pipeline"],
         _predictor_state["df_for_inf"],
@@ -414,7 +413,6 @@ def predgame(
     **kwargs
 ):
     _ensure_trained(app)
-    print('******', _predictor_state["df_for_inf"])
     return _infer_grid_for_game(
         _predictor_state["pipeline"],
         _predictor_state["df_for_inf"],
@@ -433,7 +431,6 @@ def predhour(
     **kwargs
 ):
     _ensure_trained(app)
-    print('******', _predictor_state["df_for_inf"])
     return _infer_grid_for_game(
         _predictor_state["pipeline"],
         _predictor_state["df_for_inf"],
