@@ -374,22 +374,23 @@ def _infer_grid_for_game(
     else:
         model = model
 
+    # compute confidence
     if hasattr(model, 'estimators_'):
+        # RandomForest: as before
         all_tree_preds = np.stack([t.predict(X_pre) for t in model.estimators_], axis=1)
         sigma = all_tree_preds.std(axis=1)
 
-    # 2) Otherwise, if it supports staged_predict, use that
     elif hasattr(model, 'staged_predict'):
-        # staged_predict yields a generator of length n_estimators,
-        # each array is shape (n_samples,)
-        staged = np.stack(list(model.staged_predict(X_pre)), axis=1)
-        sigma = staged.std(axis=1)
+        # HGB: compute per‐tree *contributions* and take their std deviation
+        staged = np.stack(list(model.staged_predict(X_pre)), axis=1)       # shape (n_samples, n_iters)
+        contribs = np.diff(staged, axis=1)                                      # shape (n_samples, n_iters-1)
+        sigma = contribs.std(axis=1)
 
-    # 3) Otherwise, fallback to zero‐variance
     else:
-        sigma = np.zeros(len(X_pre))
+        # fallback: small constant variance so conf isn't always 1
+        sigma = np.full(len(X_pre), fill_value=np.mean(preds)*0.01)  # or choose a sensible floor
 
-    # turn σ into your old “confidence” metric
+    # turn σ into your old confidence metric
     conf = 1.0 / (1.0 + sigma)
 
     # assemble results
