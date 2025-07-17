@@ -109,6 +109,7 @@ TEMPLATE = '''
     </label>
     <button type="submit">Go</button>
   </form>
+  <p class="note">Showing {{ predictions|length }} of top {{ top_n }} items.</p>
   {% if message %}<div class="warn">{{ message }}</div>{% endif %}
   {% if not ready %}
     <div>Model not trained yet. Try again soon.</div>
@@ -212,7 +213,7 @@ def show_predictions():
         durations=dur_opts,
         category_options=[sel_game_lc],
         top_n=top_n,
-        unique_scores=True,
+        unique_scores=False,
     )
     if 'conf' not in top_df.columns:
         top_df['conf'] = np.nan
