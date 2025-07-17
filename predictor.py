@@ -367,6 +367,8 @@ def _infer_grid_for_game(
     pre = pipeline.named_steps['pre']
     rf  = pipeline.named_steps['reg']
     X_pre = pre.transform(X_inf)
+
+    model = pipeline.named_steps['reg']
     if isinstance(model, TransformedTargetRegressor):
         model = model.regressor_
 
