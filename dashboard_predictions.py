@@ -134,7 +134,7 @@ TEMPLATE = '''
     </tbody>
   </table>
   <div class="note">
-    Confidence is the 1σ spread across the RandomForest's trees (larger = more uncertain).
+    Confidence is the 1/1σ spread across the RandomForest's trees (larger = more certain).
   </div>
   {% endif %}
 </body>
