@@ -8,8 +8,8 @@ from predictor import (
     _infer_grid_for_game,   # internal helper; used for dashboard inference
 )
 
+# Mount at root so this handles '/'
 dash_preds = Blueprint('dash_preds', __name__, url_prefix='/')
-
 
 TEMPLATE = """
 <!doctype html>
@@ -23,7 +23,7 @@ TEMPLATE = """
       th { background: #f5f5f5; }
       body { font-family: sans-serif; margin: 2rem; }
       form { margin-bottom: 1rem; }
-      input { padding: 4px; }
+      input, select { padding: 4px; }
       .note { margin-top: 1rem; font-size: 0.9em; color: #666; }
       .warn { color: #b00; font-weight: bold; }
     </style>
@@ -32,7 +32,14 @@ TEMPLATE = """
     <h1>Top {{ top_n }} Predictions{% if game %} for “{{ game }}”{% endif %}</h1>
     <form method="get">
       <label>Stream (channel): <input name="stream" value="{{ stream }}"></label>
-      <label>Game: <input name="game" value="{{ game }}"></label>
+      <label>Game:
+        <select name="game">
+          <option value="">All</option>
+          {% for g in cat_opts %}
+            <option value="{{ g }}" {% if g == game %}selected{% endif %}>{{ g }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <label>Top N: <input name="top_n" type="number" value="{{ top_n }}" min="1" max="50" style="width:4em;"></label>
       <button type="submit">Go</button>
     </form>
@@ -88,6 +95,7 @@ def show_predictions():
     except ValueError:
         top_n = 10
 
+    # If model not ready, still pass cat_opts for dropdown
     if not ready:
         return render_template_string(
             TEMPLATE,
@@ -95,6 +103,7 @@ def show_predictions():
             stream=stream,
             game=game,
             top_n=top_n,
+            cat_opts=cat_opts or [],
             predictions=[],
             message="",
         )
@@ -106,12 +115,10 @@ def show_predictions():
     df['stream_name_lc']   = df['stream_name'].str.lower()
     df['game_category_lc'] = df['game_category'].str.lower()
 
-    # mapping back to display case (choose last-seen name)
-    # (If you prefer canonical display names, build that elsewhere.)
+    # mapping back to display case
     stream_display_map = df.groupby('stream_name_lc')['stream_name'].last().to_dict()
     game_display_map   = df.groupby('game_category_lc')['game_category'].last().to_dict()
 
-    # case-insensitive lookups
     stream_lc = stream.lower()
     game_lc   = game.lower()
 
@@ -126,24 +133,22 @@ def show_predictions():
             stream=stream,
             game=game,
             top_n=top_n,
+            cat_opts=cat_opts or [],
             predictions=[],
             message=message,
         )
 
-    # valid stream canonical display name
     stream_disp = stream_display_map[stream_lc]
 
-    # build category list in lower for matching
+    # case-insensitive category list
     cat_opts_lc = [c.lower() for c in (cat_opts or [])]
 
-    # choose game: if user supplied a recognized game use it;
-    # else fallback to this stream's most recent recorded game
+    # choose game or fallback
     if game_lc and game_lc in cat_opts_lc:
         sel_game_lc = game_lc
     else:
         if game_lc and game_lc not in cat_opts_lc:
             message = f"Game '{game}' not found. Using last recorded game for stream."
-        # last recorded game for this stream
         sel_game_lc = (
             df.loc[df['stream_name_lc'] == stream_lc, 'game_category_lc'].iloc[-1]
         )
@@ -151,13 +156,9 @@ def show_predictions():
     sel_game_disp = game_display_map.get(sel_game_lc, sel_game_lc)
 
     # --- call predictor ---
-    # We pass the *display* stream name because predictor df_for_inf stores original casing.
-    # However if training lowercased stream_name, you can switch to stream_lc here.
-
-    # df_game = df_for_inf[df_for_inf['game_category'].str.lower() == sel_game_lc]
     top_df = _infer_grid_for_game(
         pipe,
-        df_for_inf,   # original full df; predictor expects original col names
+        df_for_inf,
         features,
         stream_name=stream_disp,
         start_times=start_opts,
@@ -167,14 +168,9 @@ def show_predictions():
         unique_scores=True,
     )
 
-    # safety: if user typed game but we fell back, filter again
-    
-
-    # ensure y_pred present; ensure conf present (fallback to NaN)
     if 'conf' not in top_df.columns:
         top_df['conf'] = np.nan
 
-    # format for template
     disp = top_df.copy()
     disp['Time']          = disp['start_time_hour'].astype(int).map(lambda h: f"{h:02d}:00")
     disp['Duration']      = disp['stream_duration'].astype(int)
@@ -183,13 +179,13 @@ def show_predictions():
         lambda v: "?" if pd.isna(v) else f"±{float(v):.2f}"
     )
 
-    # render
     return render_template_string(
         TEMPLATE,
         ready=True,
         stream=stream_disp,
         game=sel_game_disp,
         top_n=top_n,
+        cat_opts=cat_opts or [],
         predictions=disp[['Time', 'Duration', 'Expected_Subs', 'Confidence']].to_dict(orient='records'),
         message=message,
     )
