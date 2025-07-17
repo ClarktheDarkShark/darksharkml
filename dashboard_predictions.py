@@ -14,7 +14,7 @@ from predictor import (
 # ─────────────────────────────────────────────────────────────────────────────
 # app = Flask(__name__)
 
-dash = Blueprint('dash', __name__, url_prefix='')  # mount at root
+dash_preds = Blueprint('dash_preds', __name__, url_prefix='')  # mount at root
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TEMPLATE: Dark‐Mode, Modern Styling
@@ -144,7 +144,7 @@ TEMPLATE = '''
 # ─────────────────────────────────────────────────────────────────────────────
 # ROUTE HANDLER
 # ─────────────────────────────────────────────────────────────────────────────
-@dash.route('/', methods=['GET'])
+@dash_preds.route('/', methods=['GET'])
 def show_predictions():
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
