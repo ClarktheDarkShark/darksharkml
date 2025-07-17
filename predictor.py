@@ -215,7 +215,7 @@ def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, _ = _prepare_training_frame(df_daily)
     y = df_clean['total_subscriptions']
     X = df_clean[feats]
-    cutoff = df_clean["stream_date"].quantile(0.9)
+    cutoff = df_clean["stream_date"].quantile(1.0)
     train_mask = df_clean["stream_date"] < cutoff
     X_train, X_test = X[train_mask], X[~train_mask]
     y_train, y_test = y[train_mask], y[~train_mask]
@@ -385,7 +385,7 @@ def get_predictor_artifacts():
             stream_duration_opts,
             metrics)
     """
-
+    print('GET ->',_predictor_state["df_for_inf"])
     return (
         _predictor_state["pipeline"],
         _predictor_state["df_for_inf"],
