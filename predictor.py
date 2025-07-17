@@ -218,13 +218,17 @@ def _train_model(df_daily: pd.DataFrame):
             "reg__max_depth": [None, 5, 10]
         }
     elif mod == 'hgb':
+        # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
         params = [
-            # Poisson‐loss grid
             {
-            'reg__regressor__loss': ['poisson'],
-            'reg__regressor__learning_rate':    [0.05, 0.1, 0.2],
-            'reg__regressor__max_leaf_nodes':   [31, 63, 80],
-            'reg__regressor__l2_regularization':[0.1, 1.0, 10.0],
+                'reg__estimator__regressor__loss': ['poisson'],
+                'reg__estimator__regressor__learning_rate': [0.05, 0.1, 0.2],
+                'reg__estimator__regressor__max_leaf_nodes': [31, 63, 80],
+                'reg__estimator__regressor__l2_regularization': [0.1, 1.0, 10.0],
+                # optional: tune the bagging wrapper itself
+                'reg__n_estimators': [10, 20],
+                'reg__max_samples': [0.8, 1.0],
+                'reg__max_features': [1.0],
             }
             # Tweedie‐loss grid (if your sklearn version supports it)
             # {

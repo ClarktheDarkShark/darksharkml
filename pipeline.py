@@ -53,6 +53,15 @@ def _build_pipeline(X: pd.DataFrame):
     transformer = FunctionTransformer(np.log1p, np.expm1, check_inverse=False)
 
     # 3) wrap HGB in TransformedTargetRegressor
-    hgb = TransformedTargetRegressor(regressor=hgb, transformer=transformer)
+    hgb_ttr = TransformedTargetRegressor(regressor=hgb, transformer=transformer)
+
+    from sklearn.ensemble import BaggingRegressor
+    hgb = BaggingRegressor(
+        estimator=hgb_ttr,
+        n_estimators=10,       # enough bags to estimate σ
+        bootstrap=True,
+        random_state=42,
+        n_jobs=-1
+    )
 
     return Pipeline([('pre', preprocessor), ('reg', hgb)]), 'hgb'
