@@ -46,7 +46,7 @@ TEMPLATE = """
           <th>Start Time</th>
           <th>Duration (hrs)</th>
           <th>Expected Subs</th>
-          <th>Confidence (± subs)</th>
+          <th>Conf </th>
         </tr>
       </thead>
       <tbody>
@@ -61,7 +61,7 @@ TEMPLATE = """
       </tbody>
     </table>
     <p class="note">
-      Confidence is the 1σ spread across the RandomForest's trees (higher = less certain).
+      Confidence is the 1/1σ spread across the RandomForest's trees (higher = more certain).
     </p>
     {% endif %}
   </body>
