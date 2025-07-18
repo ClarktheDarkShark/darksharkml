@@ -41,27 +41,34 @@ def _build_pipeline(X: pd.DataFrame):
     # ─────────────────────────────────────────────────────────────────────────────
 
     rf = RandomForestRegressor(
-        n_estimators=200, max_depth=5, max_features=0.8,
-        bootstrap=True, random_state=42, n_jobs=-1
-    )
-
-    hgb = HistGradientBoostingRegressor(
-        early_stopping=True,
-        validation_fraction=0.2,
-        random_state=42
-    )
-    transformer = FunctionTransformer(np.log1p, np.expm1, check_inverse=False)
-
-    # 3) wrap HGB in TransformedTargetRegressor
-    hgb_ttr = TransformedTargetRegressor(regressor=hgb, transformer=transformer)
-
-    from sklearn.ensemble import BaggingRegressor
-    hgb = BaggingRegressor(
-        estimator=hgb_ttr,
-        n_estimators=10,       # enough bags to estimate σ
-        bootstrap=True,
-        random_state=42,
+        n_estimators=200, 
+        max_depth=5, 
+        max_features=0.8,
+        bootstrap=True, 
+        random_state=42, 
         n_jobs=-1
     )
+    # rf_ttr  = TransformedTargetRegressor(rf,
+    #               transformer=FunctionTransformer(np.log1p, np.expm1))
 
-    return Pipeline([('pre', preprocessor), ('reg', hgb)]), 'hgb'
+    hgb = HistGradientBoostingRegressor(
+        early_stopping=False,
+        validation_fraction=0.2,
+        random_state=42,
+        max_iter=200
+    )
+    # transformer = FunctionTransformer(np.log1p, np.expm1, check_inverse=False)
+
+    # 3) wrap HGB in TransformedTargetRegressor
+    # hgb_ttr = TransformedTargetRegressor(regressor=hgb, transformer=transformer)
+
+    # from sklearn.ensemble import BaggingRegressor
+    # hgb = BaggingRegressor(
+    #     estimator=hgb_ttr,
+    #     n_estimators=10,       # enough bags to estimate σ
+    #     bootstrap=True,
+    #     random_state=42,
+    #     n_jobs=-1
+    # )
+
+    return Pipeline([('pre', preprocessor), ('reg', rf)]), 'rf'

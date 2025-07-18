@@ -65,6 +65,7 @@ _predictor_state = {
 # ATTEMPT TO LOAD PRE‐TRAINED ARTIFACTS (skip on‐dyno training)
 # ─────────────────────────────────────────────────────────────────────────────
 if os.path.exists(_ARTIFACT_PATH):
+    # print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
     try:
         data = joblib.load(_ARTIFACT_PATH)
         df_inf = data.get("df_for_inf")
@@ -98,6 +99,7 @@ def _load_daily_stats_df(app):
     df_daily.columns = df_daily.columns.map(str)
     df_daily.drop(columns=['tags'], errors='ignore', inplace=True)
     df_daily['game_category'] = df_daily['game_category'].str.lower()
+
     return df_daily
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -190,7 +192,7 @@ def _train_model(df_daily: pd.DataFrame):
     y = df_clean['total_subscriptions']
     # y = df_clean['net_follower_change']
     X = df_clean[feats]
-    cutoff = df_clean["stream_date"].quantile(0.8)
+    cutoff = df_clean["stream_date"].quantile(0.9)
     train_mask = df_clean["stream_date"] < cutoff
     X_train, X_test = X[train_mask], X[~train_mask]
     y_train, y_test = y[train_mask], y[~train_mask]
@@ -203,7 +205,13 @@ def _train_model(df_daily: pd.DataFrame):
 
     # plot_features(feats, X_train, y_train, train_mask, df_clean)
 
-    print('Training sample size:',X_train.shape)
+    print()
+    print(X_train)
+    print('Train sample size:',X_train.shape)
+    print('Test sample size:',X_test.shape)
+    print()
+    print(y_train.describe())
+    print(X_train.nunique())
 
     pipeline, mod = _build_pipeline(X_train)
     
@@ -218,17 +226,17 @@ def _train_model(df_daily: pd.DataFrame):
             "reg__max_depth": [None, 5, 10]
         }
     elif mod == 'hgb':
-        # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
+        # # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
+        # pipeline, _ = _build_pipeline(X_train)
+        # for p in sorted(pipeline.get_params().keys()):
+        #     if p.startswith("reg__"):
+        #         print(p)
         params = [
             {
-                'reg__estimator__regressor__loss': ['poisson'],
-                'reg__estimator__regressor__learning_rate': [0.05, 0.1, 0.2],
-                'reg__estimator__regressor__max_leaf_nodes': [31, 63, 80],
-                'reg__estimator__regressor__l2_regularization': [0.1, 1.0, 10.0],
-                # optional: tune the bagging wrapper itself
-                'reg__n_estimators': [10, 20],
-                'reg__max_samples': [0.8, 1.0],
-                'reg__max_features': [1.0],
+                'reg__loss': ['poisson'],
+                'reg__learning_rate': [0.05, 0.1, 0.2],
+                'reg__max_leaf_nodes': [31, 63, 80],
+                'reg__l2_regularization': [0.1, 1.0, 10.0]
             }
             # Tweedie‐loss grid (if your sklearn version supports it)
             # {
@@ -275,6 +283,9 @@ def _train_model(df_daily: pd.DataFrame):
         print(m, metrics[m])
 
     df_for_inf = df_clean[['stream_name'] + feats].copy()
+
+    preds = model.predict(X_test)
+    print(preds)
     return model, model.best_estimator_, df_for_inf, feats, metrics
 
 # ─────────────────────────────────────────────────────────────────────────────
