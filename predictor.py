@@ -425,6 +425,8 @@ def _infer_grid_for_game(
     results = results.sort_values('y_pred', ascending=False)
 
     if unique_scores:
+        print('Results')
+        print(results)
         results = results.drop_duplicates(subset=['y_pred'], keep='first')
 
     return results.head(top_n).reset_index(drop=True)
