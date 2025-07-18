@@ -91,7 +91,7 @@ TEMPLATE = '''
   </style>
 </head>
 <body>
-  <h1>Top {{ top_n }} Predictions{% if game %} for “{{ game }}”{% endif %}</h1>
+  # <h1>Top {{ top_n }} Predictions{% if game %} for “{{ game }}”{% endif %}</h1>
   <form method="get">
     <label>Stream:
       <input name="stream" value="{{ stream }}" placeholder="Channel name">

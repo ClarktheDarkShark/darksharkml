@@ -412,7 +412,7 @@ def _infer_grid_for_game(
     results = X_inf.copy()
     results['y_pred'] = preds
     results['conf']  = conf
-    print('Conf', conf)
+    # print('Conf', conf)
 
     # legacy: if user didn’t supply category_options, restrict back to last game
     if restrict_to_stream_game:
