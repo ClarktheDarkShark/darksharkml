@@ -213,7 +213,7 @@ def show_predictions():
         durations=dur_opts,
         category_options=[sel_game_lc],
         top_n=top_n,
-        unique_scores=False,
+        unique_scores=True,
     )
     if 'conf' not in top_df.columns:
         top_df['conf'] = np.nan
