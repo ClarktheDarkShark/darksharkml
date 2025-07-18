@@ -428,6 +428,8 @@ def _infer_grid_for_game(
         print('Results')
         print(results)
         results = results.drop_duplicates(subset=['y_pred'], keep='first')
+        print('Results AFTER...')
+        print(results)
 
     return results.head(top_n).reset_index(drop=True)
 
