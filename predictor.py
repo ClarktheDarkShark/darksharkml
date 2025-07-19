@@ -94,14 +94,39 @@ else:
 # DATA LOADING
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_daily_stats_df(app):
-    """Read the entire daily_stats table into a DataFrame, with string column names."""
+    """Read the entire daily_stats table into a DataFrame, with string column names,
+    and one-hot encode the list-of-tags into separate columns."""
     with app.app_context():
         df_daily = pd.read_sql_table(DailyStats.__tablename__, con=db.engine)
+    # ensure columns are strings
     df_daily.columns = df_daily.columns.map(str)
-    df_daily.drop(columns=['tags'], errors='ignore', inplace=True)
+
+    # normalize missing or non-list tags to empty list
+    df_daily['tags'] = df_daily['tags'].apply(lambda x: x if isinstance(x, list) else [])
+
+    # explode to one tag per row, get dummies, then sum back into one row per original index
+    df_tags = (
+        df_daily['tags']
+        .explode()                       # one row per tag
+        .str.get_dummies()               # one-hot encode
+        .groupby(level=0)                # group back by original row index
+        .sum()                           # 1 if tag was present, else 0
+    )
+
+    # join the new tag-columns onto your original frame
+    df_daily = pd.concat([df_daily.drop(columns=['tags']), df_tags], axis=1)
+
+        # **2) Inspect your one-hot matrix**
+    print("\nOne-hot tag columns:")
+    print(df_tags.head())             # first 5 rows of dummy matrix
+    print("Dummy columns created:")
+    print(df_tags.columns.tolist())   # list of tag names now as columns
+
+    # lowercase your game_category as before
     df_daily['game_category'] = df_daily['game_category'].str.lower()
 
     return df_daily
+
 
 
 
@@ -343,6 +368,15 @@ def _infer_grid_for_game(
     results['conf']  = conf
     # print('Conf', conf)
 
+    tag_cols = [
+        col for col in X_inf.columns
+        if set(results[col].unique()).issubset({0,1})
+    ]
+    # build a list of tags for each row
+    results['tags'] = results[tag_cols].apply(
+        lambda row: [col for col,val in row.items() if val==1], axis=1
+    )
+
     # legacy: if user didn’t supply category_options, restrict back to last game
     if restrict_to_stream_game:
         game_cat = last_row["game_category"]
@@ -351,7 +385,9 @@ def _infer_grid_for_game(
     if start_hour_filter is not None:
         results = results[results['start_time_hour'] == start_hour_filter]
 
+    # results = results.sort_values('y_pred', ascending=False)
     results = results.sort_values('y_pred', ascending=False)
+
 
     if unique_scores:
         # print('Results')

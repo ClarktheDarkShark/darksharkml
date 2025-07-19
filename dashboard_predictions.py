@@ -117,6 +117,14 @@ TEMPLATE = '''
   {% if not ready %}
     <div>Model not trained yet. Try again soon.</div>
   {% else %}
+  
+  {% if best_tags %}
+    <p><strong>Tags driving top prediction:</strong>
+      {{ best_tags | join(', ') }}
+    </p>
+  {% endif %}
+
+  
   <table>
     <thead>
       <tr>
@@ -222,6 +230,10 @@ def show_predictions():
         top_n=top_n,
         unique_scores=True,
     )
+    if not top_df.empty:
+        best_tags = top_df.loc[0, 'tags']
+    else:
+        best_tags = []
     if 'conf' not in top_df.columns:
         top_df['conf'] = np.nan
 
