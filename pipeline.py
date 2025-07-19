@@ -48,8 +48,8 @@ def _build_pipeline(X: pd.DataFrame):
         random_state=42, 
         n_jobs=-1
     )
-    # rf_ttr  = TransformedTargetRegressor(rf,
-    #               transformer=FunctionTransformer(np.log1p, np.expm1))
+    rf  = TransformedTargetRegressor(rf,
+                  transformer=FunctionTransformer(np.log1p, np.expm1))
 
     hgb = HistGradientBoostingRegressor(
         early_stopping=False,

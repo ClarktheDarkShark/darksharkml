@@ -206,24 +206,30 @@ def _train_model(df_daily: pd.DataFrame):
     # plot_features(feats, X_train, y_train, train_mask, df_clean)
 
     print()
-    print(X_train)
+    # print(X_train)
     print('Train sample size:',X_train.shape)
     print('Test sample size:',X_test.shape)
     print()
-    print(y_train.describe())
-    print(X_train.nunique())
+    # print(y_train.describe())
+    # print(X_train.nunique())
 
     pipeline, mod = _build_pipeline(X_train)
     
     tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
 
     if mod == 'rf':
+
+        # # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
+        # pipeline, _ = _build_pipeline(X_train)
+        # for p in sorted(pipeline.get_params().keys()):
+        #     if p.startswith("reg__"):
+        #         print(p)
         params = {
-            "reg__n_estimators":    [200, 600, 1000],
-            "reg__min_samples_leaf":[3, 5, 10, 50],
-            "reg__min_samples_split":[5, 10, 50],
-            "reg__max_features":    ['sqrt', 0.5, 0.8, 1.0],
-            "reg__max_depth": [None, 5, 10]
+            "reg__regressor__n_estimators":    [200, 600, 1000],
+            "reg__regressor__min_samples_leaf":[3, 5, 10, 50],
+            "reg__regressor__min_samples_split":[5, 10, 50],
+            "reg__regressor__max_features":    ['sqrt', 0.5, 0.8, 1.0],
+            "reg__regressor__max_depth": [None, 5, 10]
         }
     elif mod == 'hgb':
         # # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
