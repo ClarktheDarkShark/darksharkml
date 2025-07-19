@@ -370,11 +370,16 @@ def _infer_grid_for_game(
 
     tag_cols = [col for col in X_inf.columns if col.startswith('tag_')]
 
-    # 2) Build the list of active tags, removing the 'tag_' prefix
-    results['tags'] = results[tag_cols].apply(
-        lambda row: [col[len('tag_'):] for col,val in row.items() if val==1],
-        axis=1
-    )
+    if tag_cols:
+        # 2) Build the list of active tags, removing the 'tag_' prefix
+        results['tags'] = results[tag_cols].apply(
+            lambda row: [col[len('tag_'):] for col,val in row.items() if val==1],
+            axis=1
+        )
+    else:
+        # fallback: no tag columns → empty list for each row
+        results['tags'] = [[] for _ in range(len(results))]
+        
     print('TAGS:', results['tags'])
 
     # legacy: if user didn’t supply category_options, restrict back to last game
