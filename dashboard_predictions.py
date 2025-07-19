@@ -196,6 +196,7 @@ def show_predictions():
             stream=stream,
             game=game,
             top_n=top_n,
+            today_name=today_name,
             cat_opts=cat_opts or [],
             predictions=[],
             message=f"Unknown stream '{stream}'.",
