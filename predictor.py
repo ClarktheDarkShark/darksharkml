@@ -291,6 +291,7 @@ def _infer_grid_for_game(
     if durations is None:
         durations = DEFAULT_DURATIONS_HRS
 
+    
     # build the grid of (game, hour, duration)
     combos = list(itertools.product(category_options, start_times, durations))
     grid = pd.DataFrame(combos, columns=['game_category','start_time_hour','stream_duration'])

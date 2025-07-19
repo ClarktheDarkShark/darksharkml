@@ -3,6 +3,7 @@ import os
 from flask import Flask, Blueprint, render_template_string, request, redirect, url_for
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 from predictor import (
     get_predictor_artifacts,
@@ -92,6 +93,8 @@ TEMPLATE = '''
 </head>
 <body>
   <h1>Top {{ top_n }} Predictions{% if game %} for “{{ game }}”{% endif %}</h1>
+  <h2>Predictions are for streaming on date: {{today_name}} </h2>
+  
   <form method="get">
     <label>Stream:
       <input name="stream" value="{{ stream }}" placeholder="Channel name">
@@ -196,6 +199,7 @@ def show_predictions():
             message=f"Unknown stream '{stream}'.",
         )
 
+    today_name = datetime.now().strftime("%A")
     stream_disp = stream_map[stream_lc]
     cat_opts_lc = [c.lower() for c in (cat_opts or [])]
 
