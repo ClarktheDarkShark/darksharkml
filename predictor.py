@@ -113,6 +113,7 @@ def _load_daily_stats_df(app):
         .sum()                           # 1 if tag was present, else 0
     )
 
+
     # join the new tag-columns onto your original frame
     df_daily = pd.concat([df_daily.drop(columns=['tags']), df_tags], axis=1)
 
@@ -125,6 +126,7 @@ def _load_daily_stats_df(app):
     # lowercase your game_category as before
     df_daily['game_category'] = df_daily['game_category'].str.lower()
 
+    print(df_daily)
     return df_daily
 
 
