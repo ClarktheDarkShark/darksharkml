@@ -383,6 +383,7 @@ def _infer_grid_for_game(
     # extract features and predict
     X_inf = base_rep[features]
     preds = pipeline.predict(X_inf)
+    print('\nPreds:', preds)
 
     # --- compute per‐tree std‐dev as a confidence score ---
     pre = pipeline.named_steps['pre']
@@ -431,11 +432,11 @@ def _infer_grid_for_game(
     results = results.sort_values('y_pred', ascending=False)
 
     if unique_scores:
-        print('Results')
-        print(results)
+        # print('Results')
+        # print(results)
         results = results.drop_duplicates(subset=['y_pred'], keep='first')
-        print('Results AFTER...')
-        print(results)
+        # print('Results AFTER...')
+        # print(results)
 
     return results.head(top_n).reset_index(drop=True)
 
