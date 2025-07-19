@@ -160,6 +160,7 @@ def show_predictions():
         top_n = max(1, min(50, int(request.args.get('top_n','10'))))
     except ValueError:
         top_n = 10
+    today_name = datetime.now().strftime("%A")
 
     # Render early if not ready
     if not ready:
@@ -169,6 +170,7 @@ def show_predictions():
             stream=stream,
             game=game,
             top_n=top_n,
+            today_name=today_name,
             cat_opts=cat_opts or [],
             predictions=[],
             message="",
@@ -199,7 +201,7 @@ def show_predictions():
             message=f"Unknown stream '{stream}'.",
         )
 
-    today_name = datetime.now().strftime("%A")
+    
     stream_disp = stream_map[stream_lc]
     cat_opts_lc = [c.lower() for c in (cat_opts or [])]
 
