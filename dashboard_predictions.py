@@ -182,6 +182,7 @@ def show_predictions():
             cat_opts=cat_opts or [],
             predictions=[],
             message="",
+            best_tags=best_tags,
         )
 
     # Prepare data copy
