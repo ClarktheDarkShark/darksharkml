@@ -230,7 +230,7 @@ def show_predictions():
     disp['Duration']      = disp['stream_duration'].astype(int)
     # disp['Expected_Subs'] = disp['y_pred'].round().astype(int)
     disp['Expected_Subs'] = disp['y_pred'].round(1)
-    disp['Confidence']    = disp['conf'].apply(lambda v: "?" if pd.isna(v) else f"±{float(v):.2f}")
+    disp['Confidence']    = disp['conf'].apply(lambda v: "?" if pd.isna(v) else f"{float(v):.2f}")
 
     return render_template_string(
         TEMPLATE,
