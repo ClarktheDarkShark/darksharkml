@@ -238,6 +238,7 @@ def show_predictions():
         stream=stream_disp,
         game=game_map.get(sel_game_lc, sel_game_lc),
         top_n=top_n,
+        today_name=today_name,
         cat_opts=cat_opts or [],
         predictions=disp[['Time','Duration','Expected_Subs','Confidence']].to_dict('records'),
         message=message,
