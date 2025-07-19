@@ -112,6 +112,7 @@ def _load_daily_stats_df(app):
         .groupby(level=0)                # group back by original row index
         .sum()                           # 1 if tag was present, else 0
     )
+    df_tags = df_tags.add_prefix('tag_')
 
 
     # join the new tag-columns onto your original frame
