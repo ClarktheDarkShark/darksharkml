@@ -21,6 +21,7 @@ def _build_pipeline(X: pd.DataFrame):
     numeric_cols     = [c for c in numeric_cols_all if c not in bool_cols]
     categorical_cols = [c for c in X.select_dtypes(include=['object','category']).columns
                         if c!='day_of_week']
+    tag_cols         = [c for c in X.columns if c.startswith('tag_')]
 
     ordered_days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
     preprocessor = ColumnTransformer(transformers=[
@@ -34,7 +35,7 @@ def _build_pipeline(X: pd.DataFrame):
          ['day_of_week']),
         ('cat', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1),
          categorical_cols),
-    ])
+    ], remainder='passthrough')
 
     # ─────────────────────────────────────────────────────────────────────────────
     # MODELS

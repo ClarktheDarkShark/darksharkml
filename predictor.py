@@ -102,27 +102,32 @@ def _load_daily_stats_df(app):
     df_daily.columns = df_daily.columns.map(str)
 
     # normalize missing or non-list tags to empty list
-    df_daily['tags'] = df_daily['tags'].apply(lambda x: x if isinstance(x, list) else [])
+    # df_daily['tags'] = df_daily['tags'].apply(lambda x: x if isinstance(x, list) else [])
+    df_daily['raw_tags'] = df_daily.pop('tags').apply(lambda x: x if isinstance(x, list) else [])
+
 
     # explode to one tag per row, get dummies, then sum back into one row per original index
     df_tags = (
-        df_daily['tags']
+        df_daily['raw_tags']
         .explode()                       # one row per tag
         .str.get_dummies()               # one-hot encode
         .groupby(level=0)                # group back by original row index
         .sum()                           # 1 if tag was present, else 0
+        .add_prefix('tag_')
     )
-    df_tags = df_tags.add_prefix('tag_')
 
+    df_daily = pd.concat([df_daily, df_tags], axis=1)
+    # if you no longer need the list version:
+    
 
-    # join the new tag-columns onto your original frame
-    df_daily = pd.concat([df_daily.drop(columns=['tags']), df_tags], axis=1)
+    # 4) Lowercase game_category, etc.
+    df_daily['game_category'] = df_daily['game_category'].str.lower()
 
-        # **2) Inspect your one-hot matrix**
-    print("\nOne-hot tag columns:")
-    print(df_tags.head())             # first 5 rows of dummy matrix
-    print("Dummy columns created:")
-    print(df_tags.columns.tolist())   # list of tag names now as columns
+    # DEBUG: confirm
+    print("raw_tags sample:", df_daily['raw_tags'].head())
+    df_daily.drop(columns=['raw_tags'], inplace=True)
+    print("dummy‐tag columns:", [c for c in df_daily.columns if c.startswith('tag_')])
+
 
     # lowercase your game_category as before
     df_daily['game_category'] = df_daily['game_category'].str.lower()
@@ -138,6 +143,10 @@ def _load_daily_stats_df(app):
 # ─────────────────────────────────────────────────────────────────────────────
 def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, _ = _prepare_training_frame(df_daily)
+
+    tag_cols = [c for c in df_clean.columns if c.startswith('tag_')]
+    feats = feats + tag_cols
+
     y = df_clean['total_subscriptions']
     # y = df_clean['net_follower_change']
     X = df_clean[feats]
