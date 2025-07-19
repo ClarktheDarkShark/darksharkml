@@ -221,7 +221,8 @@ def show_predictions():
     disp = top_df.copy()
     disp['Time']          = disp['start_time_hour'].astype(int).map(lambda h: f"{h:02d}:00")
     disp['Duration']      = disp['stream_duration'].astype(int)
-    disp['Expected_Subs'] = disp['y_pred'].round().astype(int)
+    # disp['Expected_Subs'] = disp['y_pred'].round().astype(int)
+    disp['Expected_Subs'] = disp['y_pred'].round(1)
     disp['Confidence']    = disp['conf'].apply(lambda v: "?" if pd.isna(v) else f"±{float(v):.2f}")
 
     return render_template_string(
