@@ -376,6 +376,7 @@ def _infer_grid_for_game(
     results['tags'] = results[tag_cols].apply(
         lambda row: [col for col,val in row.items() if val==1], axis=1
     )
+    print('TAGS:', results['tags'])
 
     # legacy: if user didn’t supply category_options, restrict back to last game
     if restrict_to_stream_game:
