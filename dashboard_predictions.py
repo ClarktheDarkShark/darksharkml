@@ -161,6 +161,8 @@ def show_predictions():
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
 
+    best_tags = []
+
     # Query params
     stream = (request.args.get('stream','thelegendyagami') or '').strip()
     game   = (request.args.get('game','') or '').strip()
@@ -209,6 +211,7 @@ def show_predictions():
             cat_opts=cat_opts or [],
             predictions=[],
             message=f"Unknown stream '{stream}'.",
+            best_tags=best_tags, 
         )
 
     
@@ -255,5 +258,6 @@ def show_predictions():
         cat_opts=cat_opts or [],
         predictions=disp[['Time','Duration','Expected_Subs','Confidence']].to_dict('records'),
         message=message,
+        best_tags=best_tags, 
     )
 
