@@ -368,13 +368,12 @@ def _infer_grid_for_game(
     results['conf']  = conf
     # print('Conf', conf)
 
-    tag_cols = [
-        col for col in X_inf.columns
-        if set(results[col].unique()).issubset({0,1})
-    ]
-    # build a list of tags for each row
+    tag_cols = [col for col in X_inf.columns if col.startswith('tag_')]
+
+    # 2) Build the list of active tags, removing the 'tag_' prefix
     results['tags'] = results[tag_cols].apply(
-        lambda row: [col for col,val in row.items() if val==1], axis=1
+        lambda row: [col[len('tag_'):] for col,val in row.items() if val==1],
+        axis=1
     )
     print('TAGS:', results['tags'])
 
