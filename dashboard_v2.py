@@ -173,14 +173,20 @@ TEMPLATE_V2 = '''
   <script>
     function selectFeature(name, value, multi=false) {
       if (multi) {
+        // Toggle tag selection without submitting
         var input = document.getElementById('input_' + name + '_' + value);
         input.checked = !input.checked;
+        var btn = document.querySelector(`button[onclick="selectFeature('${name}','${value}',true)"]`);
+        btn.classList.toggle('selected');
       } else {
+        // Radio button behavior without submitting
         var inputs = document.querySelectorAll('input[name="' + name + '"]');
-        inputs.forEach(i => i.checked = false);
-        document.getElementById('input_' + name + '_' + value).checked = true;
+        inputs.forEach(i => {
+          i.checked = (i.value === value);
+          var btn = document.querySelector(`button[onclick="selectFeature('${name}','${i.value}')"]`);
+          btn.classList.toggle('selected', i.value === value);
+        });
       }
-      document.getElementById('feature-form').submit();
     }
   </script>
 </head>
@@ -214,7 +220,7 @@ TEMPLATE_V2 = '''
         </label>
       {% endfor %}
     </div>
-    <button type="submit" class="update-btn">Update</button>
+    <button type="submit" class="update-btn">Update Prediction</button>
     <input type="hidden" name="manual" value="1">
   </form>
 
@@ -297,8 +303,50 @@ def show_feature_insights():
     stream_name = "thelegendyagami"
     today_name = "Saturday"
 
-    # Feature selection from query params
-    selected_game = request.args.get('game', cat_opts[0] if cat_opts else '')
+    # --- Limit games to top 10 by predicted subs + all games played by thelegendyagami ---
+    df = df_for_inf.copy()
+    df['y_pred'] = pipe.predict(df[features]) if ready else 0
+    # Get all games played by thelegendyagami
+    legend_games = df[df['stream_name'] == stream_name]['game_category'].unique().tolist()
+    # Get top 10 games by predicted subs
+    game_scores = (
+        df.groupby('game_category')
+        .agg(avg_subs=('y_pred', 'mean'))
+        .reset_index()
+        .sort_values('avg_subs', ascending=False)
+    )
+    top_games = game_scores.head(10)['game_category'].tolist()
+    # Union and preserve order: legend_games first, then top_games not already included
+    game_opts = legend_games + [g for g in top_games if g not in legend_games]
+
+    # --- Limit tags to top 10 by effect ---
+    tag_effects_full = _infer_grid_for_game(
+        pipe,
+        df_for_inf,
+        features,
+        stream_name=stream_name,
+        start_times=start_opts,
+        durations=dur_opts,
+        category_options=cat_opts,
+        top_n=100,
+        unique_scores=True,
+        vary_tags=True,
+        today_name=today_name,
+    )
+    tag_effects_full = tag_effects_full[abs(tag_effects_full['delta_from_baseline']) > 0.01]
+    top_tags = tag_effects_full.sort_values('delta_from_baseline', ascending=False).head(10)['tag'].tolist()
+    # Get all tags ever used by thelegendyagami
+    tag_cols = [c for c in features if c.startswith('tag_')]
+    legend_tag_opts = []
+    legend_rows = df[df['stream_name'] == stream_name]
+    for t in tag_cols:
+        if legend_rows[t].sum() > 0:
+            legend_tag_opts.append(t[len('tag_'):])
+    # Union and preserve order: legend_tag_opts first, then top_tags not already included
+    tag_opts = legend_tag_opts + [t for t in top_tags if t not in legend_tag_opts]
+
+    # --- Feature selection from query params ---
+    selected_game = request.args.get('game', game_opts[0] if game_opts else '')
     try:
         selected_start_time = int(request.args.get('start_time', start_opts[0] if start_opts else 0))
     except Exception:
@@ -306,23 +354,15 @@ def show_feature_insights():
     selected_tags = request.args.getlist('tags')
     manual = request.args.get('manual', None)
 
-    # Get all possible tags for buttons
-    tag_cols = [c for c in features if c.startswith('tag_')]
-    tag_opts = [c[len('tag_'):] for c in tag_cols]
-
     pred_result = None
     if manual and ready:
-        # Build feature row for prediction
-        last_row = df_for_inf[df_for_inf["stream_name"] == stream_name].iloc[-1].copy()
+        last_row = df[df["stream_name"] == stream_name].iloc[-1].copy()
         last_row['game_category'] = selected_game
         last_row['start_time_hour'] = selected_start_time
-        # Set tags
         for t in tag_opts:
             last_row['tag_' + t] = 1 if t in selected_tags else 0
-        # Predict
         X = last_row[features].to_frame().T
         y_pred = pipe.predict(X)[0]
-        # Confidence
         try:
             pre = pipe.named_steps['pre']
             X_pre = pre.transform(X)
@@ -344,7 +384,6 @@ def show_feature_insights():
         }
 
     # Generate predictions for each row in df_for_inf
-    df = df_for_inf.copy()
     df['y_pred'] = pipe.predict(df[features]) if ready else 0
     # Confidence: 1/(1+std) across trees if available
     try:
@@ -355,8 +394,8 @@ def show_feature_insights():
         if isinstance(model, TransformedTargetRegressor):
             model = model.regressor_
         if hasattr(model, 'estimators_'):
-            all_tree_preds = np.stack([t.predict(X_pre) for t in model.estimators_], axis=1)
-            sigma = all_tree_preds.std(axis=1)
+                all_tree_preds = np.stack([t.predict(X_pre) for t in model.estimators_], axis=1)
+                sigma = all_tree_preds.std(axis=1)
         else:
             sigma = np.full(len(X_pre), fill_value=np.mean(df['y_pred'])*0.01)
         df['conf'] = 1.0 / (1.0 + sigma)
@@ -448,7 +487,7 @@ def show_feature_insights():
         TEMPLATE_V2,
         today_name=today_name,
         selected_date=datetime.now().strftime("%Y-%m-%d"),
-        game_opts=cat_opts,
+        game_opts=game_opts,
         start_opts=start_opts,
         tag_opts=tag_opts,
         selected_game=selected_game,
