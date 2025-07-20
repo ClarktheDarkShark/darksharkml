@@ -34,17 +34,24 @@ def calculate_shap_values(pipeline, X):
         # Return dummy values in case of error
         return np.zeros((X_processed.shape[0], X_processed.shape[1])), 0, None
 
+def calculate_shap_explanation(pipeline, X):
+    X_processed = pipeline.named_steps['pre'].transform(X)
+    model = pipeline.named_steps['reg']
+    # Wrap model + preprocessor in a single explainer
+    explainer = shap.Explainer(model, X_processed)
+    explanation = explainer(X_processed)   # This is an Explanation object
+    return explanation
+
 def generate_shap_plots(pipeline, df, features):
     """Generate SHAP plots as base64-encoded PNG images and HTML"""
     X = df[features]
     shap_values, base_value, explainer = calculate_shap_values(pipeline, X)
 
-    # 1) Summary Plot (distribution, importance, direction)
+    explanation = calculate_shap_explanation(pipeline, df[features])
+
+    # 1) Beeswarm (formerly summary-dot)
     fig = plt.figure()
-    # fig, ax = plt.subplots()
-    shap.plots.beeswarm(
-        shap_values,                    # feed it the same array or SHAPValues object
-        show=False)
+    shap.plots.beeswarm(explanation, show=False)
     summary_img = fig_to_base64(fig)
 
     # 2) Dependence Plot (top feature, colored by second top feature)
