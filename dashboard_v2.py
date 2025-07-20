@@ -173,16 +173,19 @@ def show_feature_insights():
     except Exception:
         df['conf'] = np.nan
 
-    # 1) Game category insights
+    # 1) Game category insights (top 10 by avg_subs)
     game_insights = (
         df.groupby('game_category')
         .agg(avg_subs=('y_pred', 'mean'), confidence=('conf', 'mean'))
         .reset_index()
         .rename(columns={'game_category': 'game'})
-        .to_dict('records')
     )
+    game_insights = game_insights.sort_values('avg_subs', ascending=False).head(10)
+    game_insights['avg_subs'] = game_insights['avg_subs'].round(2)
+    game_insights['confidence'] = game_insights['confidence'].round(2)
+    game_insights = game_insights.to_dict('records')
 
-    # 2) Tag combination effects
+    # 2) Tag combination effects (limit to abs(delta) > 0.01, round values)
     tag_effects = _infer_grid_for_game(
         pipe,
         df_for_inf,
@@ -195,24 +198,32 @@ def show_feature_insights():
         unique_scores=True,
         vary_tags=True,
     )
-    # Select correct columns for vary_tags mode
     if 'tag' in tag_effects.columns:
+        tag_effects = tag_effects[abs(tag_effects['delta_from_baseline']) > 0.01]
+        tag_effects['delta_from_baseline'] = tag_effects['delta_from_baseline'].round(2)
+        tag_effects['y_pred'] = tag_effects['y_pred'].round(2)
         tag_insights = tag_effects[['tag', 'delta_from_baseline', 'y_pred']].rename(
             columns={'tag': 'tags', 'delta_from_baseline': 'delta', 'y_pred': 'subs'}
         ).to_dict('records')
     else:
+        tag_effects = tag_effects[abs(tag_effects['delta_from_baseline']) > 0.01]
+        tag_effects['delta_from_baseline'] = tag_effects['delta_from_baseline'].round(2)
+        tag_effects['y_pred'] = tag_effects['y_pred'].round(2)
         tag_insights = tag_effects[['tags', 'delta_from_baseline', 'y_pred']].rename(
             columns={'delta_from_baseline': 'delta', 'y_pred': 'subs'}
         ).to_dict('records')
 
-    # 3) Start time analysis
+    # 3) Start time analysis (format time, round values)
     time_insights = (
         df.groupby('start_time_hour')
         .agg(avg_subs=('y_pred', 'mean'), confidence=('conf', 'mean'))
         .reset_index()
         .rename(columns={'start_time_hour': 'time'})
-        .to_dict('records')
     )
+    time_insights['avg_subs'] = time_insights['avg_subs'].round(2)
+    time_insights['confidence'] = time_insights['confidence'].round(2)
+    time_insights['time'] = time_insights['time'].apply(lambda h: f"{int(h):02d}:00")
+    time_insights = time_insights.to_dict('records')
 
     return render_template_string(
         TEMPLATE_V2,
