@@ -68,13 +68,26 @@ TEMPLATE_V2 = '''
       display: grid;
       grid-template-columns: repeat(6, 1fr);
       grid-template-rows: repeat(4, 1fr);
-      gap: 4px;
+      gap: 18px 4px;
       margin-top: 1rem;
       margin-bottom: 1rem;
-      max-width: 600px;
+      max-width: 700px;
+    }
+    .heatcell-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    .heatcell-label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 4px;
     }
     .heatcell {
       height: 48px;
+      width: 100%;
+      min-width: 60px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -88,14 +101,6 @@ TEMPLATE_V2 = '''
     .heatcell:hover {
       outline: 2px solid #fff;
       z-index: 2;
-    }
-    .heatmap-labels {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      margin-bottom: 0.5rem;
-      font-size: 0.85rem;
-      color: var(--muted);
-      max-width: 600px;
     }
     .date-form {
       margin-bottom: 1.5rem;
@@ -173,16 +178,14 @@ TEMPLATE_V2 = '''
   </table>
 
   <h2>Start Time Analysis (Heat Map)</h2>
-  <div class="heatmap-labels">
-    {% for h in range(24) %}
-      <div>{{ "%02d:00"|format(h) }}</div>
-    {% endfor %}
-  </div>
   <div class="heatmap">
     {% for cell in heatmap_cells %}
-      <div class="heatcell" style="background: {{ cell.bg }};"
-           title="Subs: {{ cell.avg_subs }}, Confidence: {{ cell.confidence }}">
-        {{ cell.avg_subs }}
+      <div class="heatcell-wrap">
+        <div class="heatcell-label">{{ cell.label }}</div>
+        <div class="heatcell" style="background: {{ cell.bg }};"
+             title="Subs: {{ cell.avg_subs }}, Confidence: {{ cell.confidence }}">
+          {{ cell.avg_subs }}
+        </div>
       </div>
     {% endfor %}
   </div>
@@ -299,11 +302,13 @@ def show_feature_insights():
     all_hours = pd.DataFrame({'time': list(range(24))})
     time_df = pd.merge(all_hours, time_df, on='time', how='left').fillna({'avg_subs': 0, 'confidence': 0})
 
-    # Normalize for color interpolation (red to blue)
-    min_subs = time_df['avg_subs'].min()
-    max_subs = time_df['avg_subs'].max()
+    # Robust color normalization: ignore outliers
+    subs_vals = time_df['avg_subs']
+    min_subs = np.percentile(subs_vals, 5)
+    max_subs = np.percentile(subs_vals, 95)
     def interp_color(val):
-        # Linear interpolation between red and blue
+        # Clamp value to [min_subs, max_subs]
+        val = max(min_subs, min(val, max_subs))
         if max_subs == min_subs:
             return "#1e88e5"  # blue
         ratio = (val - min_subs) / (max_subs - min_subs)
@@ -313,14 +318,16 @@ def show_feature_insights():
         b = int(38 + (229 - 38) * ratio)
         return f"rgb({r},{g},{b})"
 
-    heatmap_cells = [
-        {
+    # Build heatmap cells for 6x4 grid
+    heatmap_cells = []
+    for i in range(24):
+        row = time_df.iloc[i]
+        heatmap_cells.append({
+            'label': f"{int(row['time']):02d}:00",
             'avg_subs': f"{row['avg_subs']:.2f}",
             'confidence': f"{row['confidence']:.2f}",
             'bg': interp_color(row['avg_subs'])
-        }
-        for _, row in time_df.iterrows()
-    ]
+        })
 
     return render_template_string(
         TEMPLATE_V2,
