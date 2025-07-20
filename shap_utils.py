@@ -43,47 +43,49 @@ def calculate_shap_explanation(pipeline, X):
     return explanation
 
 def generate_shap_plots(pipeline, df, features):
-    """Generate SHAP plots as base64-encoded PNG images and HTML"""
     X = df[features]
-    shap_values, base_value, explainer = calculate_shap_values(pipeline, X)
+    # 1) preprocess & explainer
+    X_proc = pipeline.named_steps['pre'].transform(X)
+    model  = pipeline.named_steps['reg']
+    explainer   = shap.Explainer(model, X_proc)
+    explanation = explainer(X_proc)
 
-    explanation = calculate_shap_explanation(pipeline, df[features])
-
-    # 1) Beeswarm (formerly summary-dot)
+    # 2) Beeswarm (aka summary-dot)
     fig = plt.figure()
     shap.plots.beeswarm(explanation, show=False)
     summary_img = fig_to_base64(fig)
 
-    # 2) Dependence Plot (top feature, colored by second top feature)
-    top_features = np.argsort(np.abs(shap_values).mean(0))[-2:]
-    dep_feat = features[top_features[-1]]
-    color_feat = features[top_features[-2]]
-    plt.figure()
-    shap.dependence_plot(dep_feat, shap_values, X, interaction_index=color_feat, show=False)
-    dependence_img = fig_to_base64(plt.gcf())
-
-    # 3) Force Plot (first sample)
-    force_plot_html = shap.force_plot(
-        base_value, shap_values[0], X.iloc[0], matplotlib=True, show=False
-    ).save_html(None)
-    # For dashboard, just pass the HTML string
-
-    # 4) Bar Plot (global importance)
-    plt.figure()
-    shap.summary_plot(shap_values, X, feature_names=features, show=False, plot_type="bar")
-    bar_img = fig_to_base64(plt.gcf())
-
-    # 5) Decision Plot (first 10 samples)
-    plt.figure()
-    shap.decision_plot(
-        base_value, shap_values[:10], X.iloc[:10], feature_names=features, show=False
+    # 3) Dependence (scatter of top feature colored by 2nd)
+    top_idx   = explanation.values.mean(0).argsort()[-1]
+    second_idx= explanation.values.mean(0).argsort()[-2]
+    fig = plt.figure()
+    shap.plots.scatter(
+        explanation[:, top_idx],
+        color=explanation[:, second_idx],
+        show=False
     )
-    decision_img = fig_to_base64(plt.gcf())
+    dependence_img = fig_to_base64(fig)
+
+    # 4) Force (first sample, HTML)
+    # note: matplotlib=False gives HTML widget you can .save_html()
+    force_html = shap.plots.force(
+        explanation[0], matplotlib=False
+    ).save_html()
+
+    # 5) Bar (global importance)
+    fig = plt.figure()
+    shap.plots.bar(explanation, show=False)
+    bar_img = fig_to_base64(fig)
+
+    # 6) Decision (first 10)
+    fig = plt.figure()
+    shap.plots.decision(explanation[:10], show=False)
+    decision_img = fig_to_base64(fig)
 
     return {
-        'summary': summary_img,
-        'dependence': dependence_img,
-        'force': force_plot_html,
-        'bar': bar_img,
-        'decision': decision_img
+        'summary':   summary_img,
+        'dependence':dependence_img,
+        'force':     force_html,
+        'bar':       bar_img,
+        'decision':  decision_img
     }
