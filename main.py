@@ -1,7 +1,7 @@
 import os
 from flask import Flask
 from db import db
-from dashboard_predictions import dash_preds
+from dashboard_predictions import dash_preds, dash_v2
 
 def create_app():
     app = Flask(__name__)
@@ -16,6 +16,7 @@ def create_app():
     # ── Initialize DB and Blueprints ────────────────────────────────────────
     db.init_app(app)
     app.register_blueprint(dash_preds)
+    app.register_blueprint(dash_v2)
 
     with app.app_context():
         # create tables if you’re not running migrations
