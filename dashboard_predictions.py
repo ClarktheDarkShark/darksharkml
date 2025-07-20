@@ -251,6 +251,27 @@ def show_predictions():
             message = f"Game '{game}' not found; using last recorded for stream."
         sel_game_lc = df.loc[df['stream_name_lc'] == stream_lc, 'game_category_lc'].iloc[-1]
 
+    # 2.5) Find typical start times for this streamer
+    streamer_rows = df[df['stream_name_lc'] == stream_lc]
+    if not streamer_rows.empty:
+        # Get the most common start hours (e.g., top 3)
+        common_hours = (
+            streamer_rows['start_time_hour']
+            .astype(int)
+            .value_counts()
+            .index[:3]
+            .tolist()
+        )
+        # Optionally, expand to nearby hours for flexibility
+        preferred_hours = set()
+        for h in common_hours:
+            preferred_hours.update([h-1, h, h+1])
+        # Filter start_opts to only include preferred hours if possible
+        filtered_start_opts = [h for h in start_opts if int(h) in preferred_hours]
+        # Fallback to all if none match
+        if filtered_start_opts:
+            start_opts = filtered_start_opts
+            
     # 3) Run inference
     top_df = _infer_grid_for_game(
         pipe,
