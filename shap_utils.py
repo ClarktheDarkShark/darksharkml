@@ -1,63 +1,95 @@
+"""
+shap_utils.py  –  one-file helper for generating SHAP visuals
+Compatible with:
+  • sklearn >= 1.3 (ColumnTransformer.get_feature_names_out available)
+  • shap  >= 0.43
+  • numpy >= 1.24  (np.bool patch included)
+Assumes pipeline = Pipeline([('pre', ...), ('reg', TransformedTargetRegressor(...))])
+"""
+
+# ── imports ────────────────────────────────────────────────────────────────
 import numpy as np
-# Patch np.bool for SHAP compatibility with NumPy >=1.24
-if not hasattr(np, 'bool'):
+if not hasattr(np, "bool"):          # SHAP < 0.44 expects np.bool
     np.bool = bool
 
+import pandas as pd                  # only used for typing / slicing
 import shap
 import matplotlib.pyplot as plt
-import io
-import base64
+import io, base64
 
-def fig_to_base64(fig):
+
+# ── tiny helper to turn figures into base-64 PNGs ──────────────────────────
+def _fig_to_b64(fig) -> str:
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight')
+    fig.savefig(buf, format="png", bbox_inches="tight")
     buf.seek(0)
     plt.close(fig)
-    return base64.b64encode(buf.read()).decode('utf-8')
+    return base64.b64encode(buf.read()).decode()
 
-def generate_shap_plots(pipeline, df, features):
-    X = df[features]
 
-    # 1) Make one explainer over pipeline.predict (handles pre + model + inverseTransform)
-    explainer   = shap.Explainer(pipeline.predict, X)
-    explanation = explainer(X)  # SHAP Explanation object
+# ── main API used by dashboard_v2.py ───────────────────────────────────────
+def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict[str, str]:
+    """
+    Parameters
+    ----------
+    pipeline : sklearn Pipeline
+        Must contain steps 'pre' and 'reg' as described above.
+    df : pd.DataFrame
+        Inference dataframe (not yet pre-processed).
+    features : list[str]
+        Column subset to feed into SHAP / the model.
 
-    # 2) Beeswarm
+    Returns
+    -------
+    dict with six base-64 images / html ready for embedding in your template:
+        summary, dependence, force, bar, decision
+    """
+
+    # ── 1. Build a numeric feature matrix & readable one-hot names ────────
+    X_raw          = df[features]
+    pre            = pipeline.named_steps["pre"]
+    X_proc         = pre.transform(X_raw)
+    feature_names  = pre.get_feature_names_out(features)
+
+    # unwrap the RandomForest inside TransformedTargetRegressor
+    reg            = pipeline.named_steps["reg"]
+    base_model     = reg.regressor_ if hasattr(reg, "regressor_") else reg
+
+    # ── 2. Fast TreeExplainer on numeric data ─────────────────────────────
+    explainer      = shap.TreeExplainer(base_model)
+    explanation    = explainer(X_proc, feature_names=feature_names)
+
+    imgs = {}
+
+    # Beeswarm (feature importance + direction)
     fig = plt.figure()
     shap.plots.beeswarm(explanation, show=False)
-    summary_img = fig_to_base64(fig)
+    imgs["summary"] = _fig_to_b64(fig)
 
-    # 3) Dependence (scatter)
-    top_idx    = explanation.values.mean(0).argsort()[-1]
-    second_idx = explanation.values.mean(0).argsort()[-2]
+    # Dependence: top feature vs. second feature colour map
+    top, second = explanation.values.mean(0).argsort()[-2:]
     fig = plt.figure()
     shap.plots.scatter(
-        explanation[:, top_idx],
-        color=explanation[:, second_idx],
+        explanation[:, top],
+        color=explanation[:, second],
         show=False
     )
-    dependence_img = fig_to_base64(fig)
+    imgs["dependence"] = _fig_to_b64(fig)
 
-    # 4) Force (HTML)
-    force_html = shap.plots.force(
+    # Force plot – first sample, HTML widget
+    imgs["force"] = shap.plots.force(
         explanation[0],
         matplotlib=False
     ).save_html()
 
-    # 5) Bar (global importance)
+    # Global bar plot (mean |SHAP|)
     fig = plt.figure()
     shap.plots.bar(explanation, show=False)
-    bar_img = fig_to_base64(fig)
+    imgs["bar"] = _fig_to_b64(fig)
 
-    # 6) Decision (first 10)
+    # Decision plot – first 10 observations
     fig = plt.figure()
     shap.plots.decision(explanation[:10], show=False)
-    decision_img = fig_to_base64(fig)
+    imgs["decision"] = _fig_to_b64(fig)
 
-    return {
-        'summary':    summary_img,
-        'dependence': dependence_img,
-        'force':      force_html,
-        'bar':        bar_img,
-        'decision':   decision_img
-    }
+    return imgs
