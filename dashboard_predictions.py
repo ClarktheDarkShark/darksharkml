@@ -251,22 +251,17 @@ def show_predictions():
             message = f"Game '{game}' not found; using last recorded for stream."
         sel_game_lc = df.loc[df['stream_name_lc'] == stream_lc, 'game_category_lc'].iloc[-1]
 
-    # —— 1) compute your channel’s usual start hour from the last observed row
-    base_row   = df_for_inf[df_for_inf['stream_name'] == stream_disp].iloc[-1]
-    usual_hour = int(base_row['start_time_hour'])
-
-    # —— 2) make a ±1-hour window (or whatever width you like)
-    nearby_hours = [h for h in start_opts if abs(h - usual_hour) <= 1]
-
-    # —— 3) pass only those hours into your inference
+    # 3) Run inference
     top_df = _infer_grid_for_game(
-        pipe, df_for_inf, features,
+        pipe,
+        df_for_inf,
+        features,
         stream_name=stream_disp,
-        start_times=nearby_hours,
+        start_times=start_opts,
         durations=dur_opts,
         category_options=[sel_game_lc],
         top_n=top_n,
-        unique_scores=False,
+        unique_scores=True,
         vary_tags=vary_tags,
     )
 
