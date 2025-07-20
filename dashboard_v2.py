@@ -165,10 +165,24 @@ TEMPLATE_V2 = '''
       background: var(--card);
       color: var(--fg);
       border-radius: var(--radius);
-      padding: 1rem;
-      margin-bottom: 2rem;
+      padding: 1.5rem;
+      margin: 1rem 0 2rem 0;
       font-size: 1.15rem;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    .pred-value {
+      font-size: 2rem;
+      color: var(--accent);
+      text-align: center;
+      padding: 1rem 0;
+      margin: 0.5rem 0;
+      border-top: 1px solid #333;
+      border-bottom: 1px solid #333;
+    }
+    .pred-details {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 1rem;
     }
   </style>
   <script>
@@ -193,6 +207,22 @@ TEMPLATE_V2 = '''
 </head>
 <body>
   <h1>Feature Insights for “thelegendyagami”</h1>
+  
+  {% if pred_result %}
+    <div class="pred-result">
+      <strong>PREDICTION FOR SELECTED FEATURES</strong>
+      <div class="pred-value">
+        {{ pred_result.y_pred }} subscribers
+      </div>
+      <div class="pred-details">
+        <b>Game:</b> {{selected_game}}<br>
+        <b>Start Time:</b> {{selected_start_time|default('')}}:00<br>
+        <b>Tags:</b> {{selected_tags|join(', ')}}<br>
+        <b>Confidence:</b> {{pred_result.conf}}
+      </div>
+    </div>
+  {% endif %}
+
   <form id="feature-form" class="feature-select" method="get">
     <div class="feature-group">
       <span class="feature-label">Game:</span>
@@ -224,17 +254,6 @@ TEMPLATE_V2 = '''
     <button type="submit" class="update-btn">Update Prediction</button>
     <input type="hidden" name="manual" value="1">
   </form>
-
-  {% if pred_result %}
-    <div class="pred-result">
-      <strong>Prediction for selected features:</strong><br>
-      <b>Game:</b> {{selected_game}}<br>
-      <b>Start Time:</b> {{selected_start_time|default('')}}:00<br>
-      <b>Tags:</b> {{selected_tags|join(', ')}}<br>
-      <b>Predicted Subs:</b> {{pred_result.y_pred}}<br>
-      <b>Confidence:</b> {{pred_result.conf}}
-    </div>
-  {% endif %}
 
   <h2>Start Time Analysis (Heat Map)</h2>
   <div class="heatmap">

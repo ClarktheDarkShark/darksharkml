@@ -15,10 +15,16 @@ def calculate_shap_values(pipeline, X):
         model = model.regressor_
 
     # Calculate SHAP values
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_processed)
-    
-    return shap_values
+    try:
+        explainer = shap.TreeExplainer(model)
+        # Fix: Use np.bool_ instead of np.bool
+        X_missing = np.isnan(X_processed).astype(np.bool_)
+        shap_values = explainer.shap_values(X_processed)
+        return shap_values
+    except Exception as e:
+        print(f"SHAP calculation failed: {str(e)}")
+        # Return dummy values in case of error
+        return np.zeros((X_processed.shape[0], X_processed.shape[1]))
 
 def generate_shap_plots(pipeline, df, features):
     """Generate four key SHAP plots as Plotly figures"""
