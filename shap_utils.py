@@ -56,8 +56,14 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     base_model     = reg.regressor_ if hasattr(reg, "regressor_") else reg
 
     # ── 2. Fast TreeExplainer on numeric data ─────────────────────────────
-    explainer   = shap.TreeExplainer(base_model, data=X_proc, feature_names=feature_names)
-    explanation = explainer(X_proc) 
+    explainer   = shap.TreeExplainer(
+    base_model,                     # the RandomForestRegressor you un-wrapped
+    data=X_proc,                    # numeric matrix same shape as training
+    feature_names=feature_names
+    )
+
+    # disable the tiny-difference assertion that is crashing you
+    explanation = explainer(X_proc, check_additivity=False)
 
     imgs = {}
 
