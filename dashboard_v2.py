@@ -1,5 +1,5 @@
 import os
-from flask import Flask, Blueprint, render_template_string
+from flask import Flask, Blueprint, render_template_string, request
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -64,10 +64,71 @@ TEMPLATE_V2 = '''
       color: var(--muted);
       font-size: 0.9rem;
     }
+    .heatmap {
+      display: grid;
+      grid-template-columns: repeat(24, 1fr);
+      gap: 2px;
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+    }
+    .heatcell {
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      border-radius: 4px;
+      color: #fff;
+      background: #333;
+      transition: background 0.2s;
+    }
+    .heatcell[data-val] {
+      background: linear-gradient(180deg, #1e88e5 {{ '{' }}val{{ '}' }}%, #333 100%);
+    }
+    .heatcell:hover {
+      outline: 2px solid #fff;
+      z-index: 2;
+    }
+    .heatmap-labels {
+      display: grid;
+      grid-template-columns: repeat(24, 1fr);
+      margin-bottom: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .date-form {
+      margin-bottom: 1.5rem;
+    }
+    .date-form input[type="date"] {
+      background: var(--card);
+      color: var(--fg);
+      border: 1px solid #333;
+      border-radius: var(--radius);
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+    }
+    .date-form button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-left: 0.5rem;
+    }
+    .date-form button:hover {
+      background: #1565c0;
+    }
   </style>
 </head>
 <body>
   <h1>Feature Insights for “thelegendyagami”</h1>
+  <form class="date-form" method="get">
+    <label for="date">Select date:</label>
+    <input type="date" id="date" name="date" value="{{ selected_date }}">
+    <button type="submit">Update</button>
+  </form>
   <h2>Predictions for streaming on date: {{today_name}}</h2>
   
   <h2>Game Category Comparison</h2>
@@ -110,25 +171,21 @@ TEMPLATE_V2 = '''
     </tbody>
   </table>
 
-  <h2>Start Time Analysis</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Start Time</th>
-        <th>Average Predicted Subs</th>
-        <th>Confidence</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in time_insights %}
-      <tr>
-        <td>{{ row.time }}</td>
-        <td>{{ row.avg_subs }}</td>
-        <td>{{ row.confidence }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <h2>Start Time Analysis (Heat Map)</h2>
+  <div class="heatmap-labels">
+    {% for h in range(24) %}
+      <div>{{ "%02d:00"|format(h) }}</div>
+    {% endfor %}
+  </div>
+  <div class="heatmap">
+    {% for cell in heatmap_cells %}
+      <div class="heatcell" style="background: linear-gradient(180deg, #1e88e5 {{ cell.intensity }}%, #333 100%);"
+           title="Subs: {{ cell.avg_subs }}, Confidence: {{ cell.confidence }}">
+        {{ cell.avg_subs }}
+      </div>
+    {% endfor %}
+  </div>
+  <div class="note">Darker blue = higher predicted subs. Hover for details.</div>
 </body>
 </html>
 '''
@@ -141,16 +198,30 @@ def show_feature_insights():
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
 
-    today_name = datetime.now().strftime("%A")
+    # Get date from query param, default to today
+    date_str = request.args.get('date')
+    if date_str:
+        try:
+            selected_date = date_str
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            today_name = dt.strftime("%A")
+        except Exception:
+            selected_date = datetime.now().strftime("%Y-%m-%d")
+            today_name = datetime.now().strftime("%A")
+    else:
+        selected_date = datetime.now().strftime("%Y-%m-%d")
+        today_name = datetime.now().strftime("%A")
+
     stream_name = "thelegendyagami"
 
     if not ready:
         return render_template_string(
             TEMPLATE_V2,
             today_name=today_name,
+            selected_date=selected_date,
             game_insights=[],
             tag_insights=[],
-            time_insights=[]
+            heatmap_cells=[]
         )
 
     # Generate predictions for each row in df_for_inf
@@ -197,6 +268,7 @@ def show_feature_insights():
         top_n=100,
         unique_scores=True,
         vary_tags=True,
+        today_name=today_name,  # pass the selected day name
     )
     if 'tag' in tag_effects.columns:
         tag_effects = tag_effects[abs(tag_effects['delta_from_baseline']) > 0.01]
@@ -213,22 +285,39 @@ def show_feature_insights():
             columns={'delta_from_baseline': 'delta', 'y_pred': 'subs'}
         ).to_dict('records')
 
-    # 3) Start time analysis (format time, round values)
-    time_insights = (
+    # 3) Start time analysis (heatmap)
+    time_df = (
         df.groupby('start_time_hour')
         .agg(avg_subs=('y_pred', 'mean'), confidence=('conf', 'mean'))
         .reset_index()
         .rename(columns={'start_time_hour': 'time'})
     )
-    time_insights['avg_subs'] = time_insights['avg_subs'].round(2)
-    time_insights['confidence'] = time_insights['confidence'].round(2)
-    time_insights['time'] = time_insights['time'].apply(lambda h: f"{int(h):02d}:00")
-    time_insights = time_insights.to_dict('records')
+    time_df['avg_subs'] = time_df['avg_subs'].round(2)
+    time_df['confidence'] = time_df['confidence'].round(2)
+    # Fill missing hours with 0
+    all_hours = pd.DataFrame({'time': list(range(24))})
+    time_df = pd.merge(all_hours, time_df, on='time', how='left').fillna({'avg_subs': 0, 'confidence': 0})
+    # Normalize for color intensity (0-100%)
+    min_subs = time_df['avg_subs'].min()
+    max_subs = time_df['avg_subs'].max()
+    def calc_intensity(val):
+        if max_subs == min_subs:
+            return 0
+        return int(100 * (val - min_subs) / (max_subs - min_subs))
+    heatmap_cells = [
+        {
+            'avg_subs': f"{row['avg_subs']:.2f}",
+            'confidence': f"{row['confidence']:.2f}",
+            'intensity': calc_intensity(row['avg_subs'])
+        }
+        for _, row in time_df.iterrows()
+    ]
 
     return render_template_string(
         TEMPLATE_V2,
         today_name=today_name,
+        selected_date=selected_date,
         game_insights=game_insights,
         tag_insights=tag_insights,
-        time_insights=time_insights
+        heatmap_cells=heatmap_cells
     )
