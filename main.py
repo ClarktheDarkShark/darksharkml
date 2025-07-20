@@ -17,7 +17,7 @@ def create_app():
     # ── Initialize DB and Blueprints ────────────────────────────────────────
     db.init_app(app)
     app.register_blueprint(dash_preds)
-    app.register_blueprint(dash_v2)
+    app.register_blueprint(dash_v2)  # Remove prefix; route will be accessible at /v2
 
     with app.app_context():
         # create tables if you’re not running migrations

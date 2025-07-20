@@ -12,7 +12,7 @@ from predictor import (
 # ─────────────────────────────────────────────────────────────────────────────
 # FLASK APP & BLUEPRINT SETUP
 # ─────────────────────────────────────────────────────────────────────────────
-dash_v2 = Blueprint('dash_v2', __name__, url_prefix='/v2')  # mount at /v2
+dash_v2 = Blueprint('dash_v2', __name__, url_prefix='')  # Remove prefix; route will be accessible at /v2
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TEMPLATE: Dark‐Mode, Modern Styling
