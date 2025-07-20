@@ -253,8 +253,8 @@ def show_predictions():
 
     # 2.5) Find typical start times for this streamer
     streamer_rows = df[df['stream_name_lc'] == stream_lc]
+    preferred_hours = set()
     if not streamer_rows.empty:
-        # Get the most common start hours (e.g., top 3)
         common_hours = (
             streamer_rows['start_time_hour']
             .astype(int)
@@ -262,29 +262,29 @@ def show_predictions():
             .index[:3]
             .tolist()
         )
-        # Optionally, expand to nearby hours for flexibility
-        preferred_hours = set()
         for h in common_hours:
             preferred_hours.update([h-1, h, h+1])
-        # Filter start_opts to only include preferred hours if possible
-        filtered_start_opts = [h for h in start_opts if int(h) in preferred_hours]
-        # Fallback to all if none match
-        if filtered_start_opts:
-            start_opts = filtered_start_opts
-            
-    # 3) Run inference
+
+    # 3) Run inference on all start_opts
     top_df = _infer_grid_for_game(
         pipe,
         df_for_inf,
         features,
         stream_name=stream_disp,
-        start_times=start_opts,
+        start_times=start_opts,  # use all possible times
         durations=dur_opts,
         category_options=[sel_game_lc],
-        top_n=top_n,
+        top_n=100,  # get enough rows to filter/sort
         unique_scores=True,
         vary_tags=vary_tags,
     )
+
+    # Add a column: is_preferred_time
+    top_df['is_preferred'] = top_df['start_time_hour'].astype(int).isin(preferred_hours)
+
+    # Sort: preferred times first, then by predicted subs
+    top_df = top_df.sort_values(['is_preferred', 'y_pred'], ascending=[False, False]).head(top_n)
+
 
     # ensure we always have a conf column
     if 'conf' not in top_df.columns:
