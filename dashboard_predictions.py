@@ -182,8 +182,7 @@ TEMPLATE = '''
 def show_predictions():
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
-
-    best_tags = []
+    
     vary_tags = request.args.get('vary_tags') == 'on'
 
     # Query params
@@ -262,7 +261,6 @@ def show_predictions():
         top_n=top_n,
         unique_scores=True,
         vary_tags=vary_tags,
-        tag_effects=[],
     )
     if not top_df.empty:
         best_tags = top_df.loc[0, 'tags']
