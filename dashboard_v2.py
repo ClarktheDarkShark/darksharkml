@@ -3,6 +3,7 @@ from flask import Flask, Blueprint, render_template_string, request
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from shap_utils import generate_shap_plots
 
 from predictor import (
     get_predictor_artifacts,
@@ -288,6 +289,23 @@ TEMPLATE_V2 = '''
       {% endfor %}
     </tbody>
   </table>
+
+  <h2>Feature Impact Analysis (SHAP)</h2>
+  <div class="shap-container">
+    <div id="shap-summary"></div>
+    <div id="shap-dependence"></div>
+  </div>
+  
+  <!-- Add Plotly.js -->
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script>
+    // Render SHAP plots
+    const summary = JSON.parse('{{ shap_plots.summary | safe }}');
+    const dependence = JSON.parse('{{ shap_plots.dependence | safe }}');
+    
+    Plotly.newPlot('shap-summary', summary.data, summary.layout);
+    Plotly.newPlot('shap-dependence', dependence.data, dependence.layout);
+  </script>
 </body>
 </html>
 '''
@@ -500,6 +518,12 @@ def show_feature_insights():
         for _, row in time_df.iterrows()
     ]
 
+    # Generate SHAP plots
+    if ready:
+        shap_plots = generate_shap_plots(pipe, df, features)
+    else:
+        shap_plots = {'summary': '{}', 'dependence': '{}'}
+
     return render_template_string(
         TEMPLATE_V2,
         today_name=today_name,
@@ -513,5 +537,6 @@ def show_feature_insights():
         pred_result=pred_result,
         game_insights=game_insights,
         tag_insights=tag_insights,
-        heatmap_cells=heatmap_cells
+        heatmap_cells=heatmap_cells,
+        shap_plots=shap_plots
     )

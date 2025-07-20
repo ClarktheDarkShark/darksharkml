@@ -6,3 +6,5 @@ pandas>=2.0
 scikit-learn==1.5.1
 joblib>=1.4
 psycopg2-binary>=2.9
+shap==0.41.0
+plotly==5.13.0
