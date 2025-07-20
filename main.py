@@ -1,7 +1,8 @@
 import os
 from flask import Flask
 from db import db
-from dashboard_predictions import dash_preds, dash_v2
+from dashboard_predictions import dash_preds
+from dashboard_v2 import dash_v2
 
 def create_app():
     app = Flask(__name__)
