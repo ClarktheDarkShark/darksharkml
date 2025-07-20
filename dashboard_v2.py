@@ -36,43 +36,47 @@ TEMPLATE_V2 = '''
     }
     * { box-sizing: border-box; }
     body {
-      margin: 0; padding: 2rem;
+      margin: 0; padding: 1.2rem;
       background: var(--bg);
       color: var(--fg);
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 0.95rem;
     }
-    h1 { margin-bottom: 1rem; }
+    h1 { margin-bottom: 0.7rem; font-size: 1.5rem; }
+    h2 { font-size: 1.15rem; margin-top: 1.2rem; margin-bottom: 0.7rem; }
     table {
       width: 100%; border-collapse: separate; border-spacing: 0;
       background: var(--card);
       border-radius: var(--radius);
       overflow: hidden;
       box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      font-size: 0.92rem;
     }
     th, td {
-      padding: 0.75rem 1rem;
+      padding: 0.5rem 0.7rem;
       text-align: center;
     }
     th {
       background: #1f1f1f;
       font-weight: 600;
       border-bottom: 1px solid #333;
+      font-size: 0.95rem;
     }
     tbody tr:nth-child(even) { background: #1a1a1a; }
     tbody tr:hover { background: #2a2a2a; }
     .note {
-      margin-top: 1rem;
+      margin-top: 0.7rem;
       color: var(--muted);
-      font-size: 0.9rem;
+      font-size: 0.85rem;
     }
     .heatmap {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
       grid-template-rows: repeat(4, 1fr);
-      gap: 18px 4px;
-      margin-top: 1rem;
-      margin-bottom: 1rem;
-      max-width: 700px;
+      gap: 12px 3px;
+      margin-top: 0.7rem;
+      margin-bottom: 0.7rem;
+      max-width: 650px;
     }
     .heatcell-wrap {
       display: flex;
@@ -81,65 +85,64 @@ TEMPLATE_V2 = '''
       justify-content: flex-start;
     }
     .heatcell-label {
-      font-size: 0.85rem;
+      font-size: 0.78rem;
       color: var(--muted);
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
     .heatcell {
-      height: 48px;
-      width: 100%;
-      min-width: 60px;
+      height: 36px;
+      min-width: 48px;
+      font-size: 0.85rem;
+      border-radius: 5px;
+      color: #fff;
+      font-weight: 500;
+      transition: background 0.2s;
+      cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.95rem;
-      border-radius: 6px;
-      color: #fff;
-      font-weight: bold;
-      transition: background 0.2s;
-      cursor: pointer;
     }
     .heatcell:hover {
       outline: 2px solid #fff;
       z-index: 2;
     }
     .date-form {
-      margin-bottom: 1.5rem;
+      margin-bottom: 1rem;
     }
     .date-form input[type="date"] {
       background: var(--card);
       color: var(--fg);
       border: 1px solid #333;
       border-radius: var(--radius);
-      padding: 0.5rem 1rem;
-      font-size: 1rem;
+      padding: 0.3rem 0.7rem;
+      font-size: 0.95rem;
     }
     .date-form button {
       background: var(--accent);
       color: #fff;
       border: none;
       border-radius: var(--radius);
-      padding: 0.5rem 1rem;
-      font-size: 1rem;
+      padding: 0.3rem 0.7rem;
+      font-size: 0.95rem;
       cursor: pointer;
-      margin-left: 0.5rem;
+      margin-left: 0.4rem;
     }
     .date-form button:hover {
       background: #1565c0;
     }
-    .feature-select { margin-bottom: 2rem; }
-    .feature-group { margin-bottom: 1rem; }
-    .feature-label { font-weight: bold; margin-right: 1rem; }
+    .feature-select { margin-bottom: 1.2rem; }
+    .feature-group { margin-bottom: 0.7rem; }
+    .feature-label { font-weight: bold; margin-right: 0.7rem; font-size: 0.95rem; }
     .feature-btn {
       background: var(--card);
       color: var(--fg);
       border: 1px solid #333;
       border-radius: var(--radius);
-      padding: 0.4rem 1rem;
-      margin-right: 0.5rem;
-      margin-bottom: 0.3rem;
+      padding: 0.25rem 0.7rem;
+      margin-right: 0.3rem;
+      margin-bottom: 0.2rem;
       cursor: pointer;
-      font-size: 1rem;
+      font-size: 0.92rem;
       transition: background 0.2s;
     }
     .feature-btn.selected, .feature-btn:active {
@@ -148,42 +151,43 @@ TEMPLATE_V2 = '''
       border-color: var(--accent);
     }
     .feature-btn:hover { background: #1565c0; color: #fff; }
-    .tag-btn { font-size: 0.95rem; }
+    .tag-btn { font-size: 0.9rem; }
     .update-btn {
       background: var(--accent);
       color: #fff;
       border: none;
       border-radius: var(--radius);
-      padding: 0.6rem 1.5rem;
-      font-size: 1.1rem;
+      padding: 0.4rem 1.1rem;
+      font-size: 1rem;
       cursor: pointer;
-      margin-top: 1rem;
-      margin-bottom: 2rem;
+      margin-top: 0.7rem;
+      margin-bottom: 1.2rem;
     }
     .update-btn:hover { background: #1565c0; }
     .pred-result {
       background: var(--card);
       color: var(--fg);
       border-radius: var(--radius);
-      padding: 1.5rem;
-      margin: 1rem 0 2rem 0;
-      font-size: 1.15rem;
+      padding: 1.2rem;
+      margin: 0.7rem 0 1.2rem 0;
+      font-size: 1.08rem;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
     .pred-value {
-      font-size: 2rem;
+      font-size: 1.5rem;
       color: var(--accent);
       text-align: center;
-      padding: 1rem 0;
-      margin: 0.5rem 0;
+      padding: 0.7rem 0;
+      margin: 0.3rem 0;
       border-top: 1px solid #333;
       border-bottom: 1px solid #333;
     }
     .pred-details {
       color: var(--muted);
-      font-size: 0.9rem;
-      margin-top: 1rem;
+      font-size: 0.85rem;
+      margin-top: 0.7rem;
     }
+    /* SHAP section: keep as is */
   </style>
   <script>
     function selectFeature(name, value, multi=false) {
@@ -431,17 +435,18 @@ def show_feature_insights():
         if isinstance(model, TransformedTargetRegressor):
             model = model.regressor_
         if hasattr(model, 'estimators_'):
-                all_tree_preds = np.stack([t.predict(X_pre) for t in model.estimators_], axis=1)
-                sigma = all_tree_preds.std(axis=1)
+            all_tree_preds = np.stack([t.predict(X_pre) for t in model.estimators_], axis=1)
+            sigma = all_tree_preds.std(axis=1)
         else:
             sigma = np.full(len(X_pre), fill_value=np.mean(df['y_pred'])*0.01)
         df['conf'] = 1.0 / (1.0 + sigma)
     except Exception:
         df['conf'] = np.nan
 
-    # 1) Game category insights (top 10 by avg_subs)
+    # 1) Game category insights (top 10 by avg_subs) -- ONLY for thelegendyagami
+    legend_df = df[df['stream_name'] == stream_name].copy()
     game_insights = (
-        df.groupby('game_category')
+        legend_df.groupby('game_category')
         .agg(avg_subs=('y_pred', 'mean'), confidence=('conf', 'mean'))
         .reset_index()
         .rename(columns={'game_category': 'game'})
