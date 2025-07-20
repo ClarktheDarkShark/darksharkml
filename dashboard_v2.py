@@ -153,22 +153,29 @@ def show_feature_insights():
             time_insights=[]
         )
 
-    # Ensure required columns exist
-    required_columns = ['conf', 'y_pred', 'game_category', 'start_time_hour']
-    missing_columns = [col for col in required_columns if col not in df_for_inf.columns]
-    if missing_columns:
-        return render_template_string(
-            TEMPLATE_V2,
-            today_name=today_name,
-            game_insights=[],
-            tag_insights=[],
-            time_insights=[],
-            message=f"Missing columns in data: {', '.join(missing_columns)}"
-        )
+    # Generate predictions for each row in df_for_inf
+    df = df_for_inf.copy()
+    df['y_pred'] = pipe.predict(df[features])
+    # Confidence: 1/(1+std) across trees if available
+    try:
+        pre = pipe.named_steps['pre']
+        X_pre = pre.transform(df[features])
+        model = pipe.named_steps['reg']
+        from sklearn.compose import TransformedTargetRegressor
+        if isinstance(model, TransformedTargetRegressor):
+            model = model.regressor_
+        if hasattr(model, 'estimators_'):
+            all_tree_preds = np.stack([t.predict(X_pre) for t in model.estimators_], axis=1)
+            sigma = all_tree_preds.std(axis=1)
+        else:
+            sigma = np.full(len(X_pre), fill_value=np.mean(df['y_pred'])*0.01)
+        df['conf'] = 1.0 / (1.0 + sigma)
+    except Exception:
+        df['conf'] = np.nan
 
     # 1) Game category insights
     game_insights = (
-        df_for_inf.groupby('game_category')
+        df.groupby('game_category')
         .agg(avg_subs=('y_pred', 'mean'), confidence=('conf', 'mean'))
         .reset_index()
         .rename(columns={'game_category': 'game'})
@@ -194,7 +201,7 @@ def show_feature_insights():
 
     # 3) Start time analysis
     time_insights = (
-        df_for_inf.groupby('start_time_hour')
+        df.groupby('start_time_hour')
         .agg(avg_subs=('y_pred', 'mean'), confidence=('conf', 'mean'))
         .reset_index()
         .rename(columns={'start_time_hour': 'time'})

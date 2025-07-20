@@ -437,13 +437,13 @@ def get_predictor_artifacts():
     """
     
     return (
-        _predictor_state["pipeline"],
-        _predictor_state["df_for_inf"],
-        _predictor_state["features"],
-        _predictor_state["stream_category_options_inf"],
-        _predictor_state["optional_start_times"],
-        _predictor_state["stream_duration_opts"],
-        _predictor_state["metrics"],
+_predictor_state["pipeline"],
+_predictor_state["df_for_inf"],
+_predictor_state["features"],
+_predictor_state["stream_category_options_inf"],
+_predictor_state["optional_start_times"],
+_predictor_state["stream_duration_opts"],
+_predictor_state["metrics"],
     )
 
 # ─────────────────────────────────────────────────────────────────────────────
