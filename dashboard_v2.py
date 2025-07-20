@@ -444,28 +444,40 @@ def show_feature_insights():
         ).to_dict('records')
 
     # 3) Start time analysis (heatmap)
-    # Filter to only thelegendyagami's data for the heatmap
-    legend_df = df[df['stream_name'] == stream_name].copy()
+    # Generate predictions for ALL possible start times
+    time_predictions = _infer_grid_for_game(
+        pipe,
+        df_for_inf,
+        features,
+        stream_name=stream_name,
+        start_times=list(range(24)),  # all 24 hours
+        durations=dur_opts,
+        category_options=[selected_game],  # use currently selected game
+        top_n=1000,  # get all predictions
+        unique_scores=False,  # we want all times
+        vary_tags=False
+    )
+    
+    # Average predictions for each start time
     time_df = (
-        legend_df.groupby('start_time_hour')
-        .agg(avg_subs=('y_pred', 'mean'), confidence=('conf', 'mean'))
+        time_predictions
+        .groupby('start_time_hour')
+        .agg(
+            avg_subs=('y_pred', 'mean'),
+            confidence=('conf', 'mean')
+        )
         .reset_index()
         .rename(columns={'start_time_hour': 'time'})
     )
+    
     time_df['avg_subs'] = time_df['avg_subs'].round(2)
     time_df['confidence'] = time_df['confidence'].round(2)
-    
-    # Fill missing hours with 0
-    all_hours = pd.DataFrame({'time': list(range(24))})
-    time_df = pd.merge(all_hours, time_df, on='time', how='left').fillna({'avg_subs': 0, 'confidence': 0})
 
-    # Robust color normalization: ignore outliers
+    # Color normalization (no need to handle empty slots anymore)
     subs_vals = time_df['avg_subs']
-    min_subs = np.percentile(subs_vals[subs_vals > 0], 5)  # ignore zeros
+    min_subs = np.percentile(subs_vals, 5)
     max_subs = np.percentile(subs_vals, 95)
     def interp_color(val):
-        if val == 0:
-            return "#333333"  # dark gray for empty slots
         # Clamp value to [min_subs, max_subs]
         val = max(min_subs, min(val, max_subs))
         if max_subs == min_subs:
@@ -477,16 +489,16 @@ def show_feature_insights():
         b = int(38 + (229 - 38) * ratio)
         return f"rgb({r},{g},{b})"
 
-    # Build heatmap cells for 6x4 grid
-    heatmap_cells = []
-    for i in range(24):
-        row = time_df.iloc[i]
-        heatmap_cells.append({
+    # Build heatmap cells
+    heatmap_cells = [
+        {
             'label': f"{int(row['time']):02d}:00",
             'avg_subs': f"{row['avg_subs']:.2f}",
             'confidence': f"{row['confidence']:.2f}",
             'bg': interp_color(row['avg_subs'])
-        })
+        }
+        for _, row in time_df.iterrows()
+    ]
 
     return render_template_string(
         TEMPLATE_V2,
