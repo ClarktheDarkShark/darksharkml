@@ -110,6 +110,10 @@ TEMPLATE = '''
     <label>Top N:
       <input name="top_n" type="number" value="{{ top_n }}" min="1" max="50" style="width:5rem;">
     </label>
+    <label>
+      <input type="checkbox" name="vary_tags" {% if vary_tags %}checked{% endif %}>
+      Vary Tags
+    </label>
     <button type="submit">Go</button>
   </form>
   <p class="note">Showing {{ predictions|length }} of top {{ top_n }} items.</p>
@@ -117,11 +121,29 @@ TEMPLATE = '''
   {% if not ready %}
     <div>Model not trained yet. Try again soon.</div>
   {% else %}
-  
-  {% if best_tags %}
-    <p><strong>Tags driving top prediction:</strong>
-      {{ best_tags | join(', ') }}
-    </p>
+     {% if vary_tags %}
+        <h2>Tag Effects</h2>
+        <table>
+          <thead>
+            <tr><th>Tag</th><th>Δ Predicted Subs</th><th>Predicted Subs</th></tr>
+          </thead>
+          <tbody>
+            {% for row in tag_effects %}
+            <tr>
+              <td>{{ row.tag }}</td>
+              <td>{{ row.delta_from_baseline|round(1) }}</td>
+              <td>{{ row.y_pred|round(1) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="note">Δ Predicted Subs = change from baseline when flipping that tag.</div>
+      {% else %}
+      {% if best_tags %}
+        <p><strong>Tags driving top prediction:</strong>
+          {{ best_tags | join(', ') }}
+        </p>
+    {% endif %}
   {% endif %}
 
   
@@ -162,6 +184,7 @@ def show_predictions():
     ready = pipe is not None and df_for_inf is not None
 
     best_tags = []
+    vary_tags = request.args.get('vary_tags') == 'on'
 
     # Query params
     stream = (request.args.get('stream','thelegendyagami') or '').strip()
@@ -184,7 +207,9 @@ def show_predictions():
             cat_opts=cat_opts or [],
             predictions=[],
             message="",
-            best_tags=best_tags,
+            best_tags=[],
+            vary_tags=vary_tags,
+            tag_effects=[]
         )
 
     # Prepare data copy
@@ -201,6 +226,7 @@ def show_predictions():
     message = ""
 
     if stream_lc not in stream_map:
+        # 2) Unknown stream
         return render_template_string(
             TEMPLATE,
             ready=True,
@@ -211,7 +237,9 @@ def show_predictions():
             cat_opts=cat_opts or [],
             predictions=[],
             message=f"Unknown stream '{stream}'.",
-            best_tags=best_tags, 
+            best_tags=[],
+            vary_tags=vary_tags,
+            tag_effects=[]
         )
 
     
@@ -233,11 +261,32 @@ def show_predictions():
         category_options=[sel_game_lc],
         top_n=top_n,
         unique_scores=True,
+        vary_tags=vary_tags,
     )
     if not top_df.empty:
         best_tags = top_df.loc[0, 'tags']
     else:
         best_tags = []
+    if 'conf' not in top_df.columns:
+        top_df['conf'] = np.nan
+
+    if vary_tags:
+        tag_effects = top_df.to_dict('records')
+        return render_template_string(
+            TEMPLATE,
+            ready=True,
+            stream=stream_disp,
+            game=game_map.get(sel_game_lc, sel_game_lc),
+            top_n=top_n,
+            today_name=today_name,
+            cat_opts=cat_opts or [],
+            message="",
+            best_tags=[],
+            vary_tags=vary_tags,
+            tag_effects=tag_effects
+        )
+    
+    best_tags = top_df.loc[0, 'tags'] if not top_df.empty else []
     if 'conf' not in top_df.columns:
         top_df['conf'] = np.nan
 
@@ -257,7 +306,9 @@ def show_predictions():
         today_name=today_name,
         cat_opts=cat_opts or [],
         predictions=disp[['Time','Duration','Expected_Subs','Confidence']].to_dict('records'),
-        message=message,
-        best_tags=best_tags, 
+        message="",
+        best_tags=best_tags,
+        vary_tags=vary_tags,
+        tag_effects=[]
     )
 

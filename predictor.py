@@ -300,22 +300,56 @@ def _infer_grid_for_game(
     top_n: int = 10,
     unique_scores: bool = True,
     start_hour_filter: Optional[int] = None,
+    vary_tags: bool = False,           # ← new flag
 ):
     """
-    Build an inference grid anchored on the last row for the specified stream_name.
-    Returns a DataFrame sorted by predicted subs desc, with a 'conf' column.
+    If vary_tags=False (default), does the usual game/hour/duration grid and returns
+    a DataFrame of top_n rows with y_pred and conf, plus a 'tags' column pulled
+    from the one-hot tag_* features.
+
+    If vary_tags=True, ignores start_times/durations/category_options and instead
+    flips each tag_* on/off in turn (holding everything else at its last-known
+    values), predicts y_pred, and returns a DataFrame of tag effects sorted
+    by delta_from_baseline.
     """
     if pipeline is None:
         raise RuntimeError("Predictor pipeline is not trained.")
 
+    # 1) get the last-known feature row
+    last_row = _get_last_row_for_stream(df_for_inf, stream_name)
+    # collect your tag columns
+    tag_cols = [c for c in features if c.startswith('tag_')]
+    # base feature vector
+    base = last_row[features].to_frame().T
+
+    if vary_tags:
+        # --- TAG EFFECT EXPERIMENT ---
+        # baseline prediction
+        y_base = pipeline.predict(base)[0]
+
+        records = []
+        for tag in tag_cols:
+            mod = base.copy()
+            # flip this tag
+            mod[tag] = 1 - mod[tag].iloc[0]
+            y_mod   = pipeline.predict(mod)[0]
+            records.append({
+                'tag': tag[len('tag_'):],               # strip prefix
+                'y_pred': y_mod,
+                'delta_from_baseline': y_mod - y_base
+            })
+
+        return (
+            pd.DataFrame(records)
+              .sort_values('delta_from_baseline', ascending=False)
+              .reset_index(drop=True)
+        )
+
+    # --- ORIGINAL GRID-BASED INFERENCE ---
     if today_name is None:
         today_name = datetime.now().strftime("%A")
 
-    # grab the most recent features for this stream
-    last_row = _get_last_row_for_stream(df_for_inf, stream_name)
-    base = last_row.to_frame().T
-
-    # determine which categories to try
+    # determine categories
     if category_options is None:
         category_options = sorted(df_for_inf["game_category"].dropna().unique().tolist())
         restrict_to_stream_game = True
@@ -328,73 +362,52 @@ def _infer_grid_for_game(
     if durations is None:
         durations = DEFAULT_DURATIONS_HRS
 
-    
-    # build the grid of (game, hour, duration)
+    # build grid of (game, hour, duration)
     combos = list(itertools.product(category_options, start_times, durations))
     grid = pd.DataFrame(combos, columns=['game_category','start_time_hour','stream_duration'])
 
-    # replicate base row and overwrite dynamic columns
+    # replicate base row and overwrite dynamic cols
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
     for col in ['game_category','start_time_hour','stream_duration']:
         base_rep[col] = grid[col]
     base_rep["day_of_week"] = today_name
 
-    # extract features and predict
+    # predict
     X_inf = base_rep[features]
-    preds = pipeline.predict(X_inf)
-    print('\nPreds:', preds)
+    preds  = pipeline.predict(X_inf)
 
-    # --- compute per‐tree std‐dev as a confidence score ---
-    pre = pipeline.named_steps['pre']
-    rf  = pipeline.named_steps['reg']
-    X_pre = pre.transform(X_inf)
-
-    model = pipeline.named_steps['reg']
+    # confidence as before
+    pre    = pipeline.named_steps['pre']
+    X_pre  = pre.transform(X_inf)
+    model  = pipeline.named_steps['reg']
     if isinstance(model, TransformedTargetRegressor):
         model = model.regressor_
-    else:
-        model = model
-
-    # compute confidence
     if hasattr(model, 'estimators_'):
-        # RandomForest: as before
         all_tree_preds = np.stack([t.predict(X_pre) for t in model.estimators_], axis=1)
         sigma = all_tree_preds.std(axis=1)
-
     elif hasattr(model, 'staged_predict'):
-        # HGB: compute per‐tree *contributions* and take their std deviation
-        staged = np.stack(list(model.staged_predict(X_pre)), axis=1)       # shape (n_samples, n_iters)
-        contribs = np.diff(staged, axis=1)                                      # shape (n_samples, n_iters-1)
-        sigma = contribs.std(axis=1)
-
+        staged  = np.stack(list(model.staged_predict(X_pre)), axis=1)
+        sigma   = np.diff(staged, axis=1).std(axis=1)
     else:
-        # fallback: small constant variance so conf isn't always 1
-        sigma = np.full(len(X_pre), fill_value=np.mean(preds)*0.01)  # or choose a sensible floor
+        sigma = np.full(len(X_pre), fill_value=np.mean(preds)*0.01)
 
-    # turn σ into your old confidence metric
     conf = 1.0 / (1.0 + sigma)
 
-    # assemble results
+    # assemble
     results = X_inf.copy()
     results['y_pred'] = preds
-    results['conf']  = conf
-    # print('Conf', conf)
+    results['conf']   = conf
 
-    tag_cols = [col for col in X_inf.columns if col.startswith('tag_')]
-
+    # pull tags from one-hot
     if tag_cols:
-        # 2) Build the list of active tags, removing the 'tag_' prefix
         results['tags'] = results[tag_cols].apply(
-            lambda row: [col[len('tag_'):] for col,val in row.items() if val==1],
+            lambda row: [c[len('tag_'):] for c,v in row.items() if v==1],
             axis=1
         )
     else:
-        # fallback: no tag columns → empty list for each row
-        results['tags'] = [[] for _ in range(len(results))]
-        
-    print('TAGS:', results['tags'])
+        results['tags'] = [[]] * len(results)
 
-    # legacy: if user didn’t supply category_options, restrict back to last game
+    # legacy game restriction
     if restrict_to_stream_game:
         game_cat = last_row["game_category"]
         results = results[results['game_category'] == game_cat]
@@ -402,18 +415,13 @@ def _infer_grid_for_game(
     if start_hour_filter is not None:
         results = results[results['start_time_hour'] == start_hour_filter]
 
-    # results = results.sort_values('y_pred', ascending=False)
+    # sort & dedupe
     results = results.sort_values('y_pred', ascending=False)
-
-
     if unique_scores:
-        # print('Results')
-        # print(results)
         results = results.drop_duplicates(subset=['y_pred'], keep='first')
-        # print('Results AFTER...')
-        # print(results)
 
     return results.head(top_n).reset_index(drop=True)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
