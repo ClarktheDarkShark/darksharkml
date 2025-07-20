@@ -35,12 +35,11 @@ def calculate_shap_values(pipeline, X):
         return np.zeros((X_processed.shape[0], X_processed.shape[1])), 0, None
 
 def calculate_shap_explanation(pipeline, X):
-    X_processed = pipeline.named_steps['pre'].transform(X)
-    model = pipeline.named_steps['reg']
-    # Wrap model + preprocessor in a single explainer
-    explainer = shap.Explainer(model, X_processed)
-    explanation = explainer(X_processed)   # This is an Explanation object
+    # let shap call pipeline.predict(X), which handles preprocessing & inverse-transform
+    explainer   = shap.Explainer(pipeline.predict, X)
+    explanation = explainer(X)      # returns a SHAP Explanation object
     return explanation
+
 
 def generate_shap_plots(pipeline, df, features):
     X = df[features]
@@ -51,6 +50,8 @@ def generate_shap_plots(pipeline, df, features):
     explanation = explainer(X_proc)
 
     # 2) Beeswarm (aka summary-dot)
+    explanation = calculate_shap_explanation(pipeline, df[features])
+
     fig = plt.figure()
     shap.plots.beeswarm(explanation, show=False)
     summary_img = fig_to_base64(fig)
