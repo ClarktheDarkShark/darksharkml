@@ -153,6 +153,19 @@ def show_feature_insights():
             time_insights=[]
         )
 
+    # Ensure required columns exist
+    required_columns = ['conf', 'y_pred', 'game_category', 'start_time_hour']
+    missing_columns = [col for col in required_columns if col not in df_for_inf.columns]
+    if missing_columns:
+        return render_template_string(
+            TEMPLATE_V2,
+            today_name=today_name,
+            game_insights=[],
+            tag_insights=[],
+            time_insights=[],
+            message=f"Missing columns in data: {', '.join(missing_columns)}"
+        )
+
     # 1) Game category insights
     game_insights = (
         df_for_inf.groupby('game_category')
