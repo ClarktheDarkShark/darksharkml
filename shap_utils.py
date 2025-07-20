@@ -41,8 +41,13 @@ def generate_shap_plots(pipeline, df, features):
 
     # 1) Summary Plot (distribution, importance, direction)
     plt.figure()
-    shap.summary_plot(shap_values, X, feature_names=features, show=False, plot_type="dot")
-    summary_img = fig_to_base64(plt.gcf())
+    fig, ax = plt.subplots()
+    shap.plots.beeswarm(
+        shap_values,                    # feed it the same array or SHAPValues object
+        show=False,
+        ax=ax
+    )
+    summary_img = fig_to_base64(fig)
 
     # 2) Dependence Plot (top feature, colored by second top feature)
     top_features = np.argsort(np.abs(shap_values).mean(0))[-2:]
