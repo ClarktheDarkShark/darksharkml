@@ -23,7 +23,7 @@ TEMPLATE_V2 = '''
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" width="device-width, initial-scale=1">
   <title>Feature Insights Dashboard</title>
   <style>
     :root {
@@ -73,10 +73,10 @@ TEMPLATE_V2 = '''
       display: grid;
       grid-template-columns: repeat(6, 1fr);
       grid-template-rows: repeat(4, 1fr);
-      gap: 12px 3px;
-      margin-top: 0.7rem;
-      margin-bottom: 0.7rem;
-      max-width: 650px;
+      gap: 18px 4px;
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+      max-width: 700px;
     }
     .heatcell-wrap {
       display: flex;
@@ -85,17 +85,17 @@ TEMPLATE_V2 = '''
       justify-content: flex-start;
     }
     .heatcell-label {
-      font-size: 0.78rem;
+      font-size: 0.85rem;
       color: var(--muted);
-      margin-bottom: 2px;
+      margin-bottom: 4px;
     }
     .heatcell {
-      height: 36px;
-      min-width: 48px;
-      font-size: 0.85rem;
-      border-radius: 5px;
+      height: 48px;
+      min-width: 60px;
+      font-size: 0.95rem;
+      border-radius: 6px;
       color: #fff;
-      font-weight: 500;
+      font-weight: bold;
       transition: background 0.2s;
       cursor: pointer;
       display: flex;
@@ -227,6 +227,8 @@ TEMPLATE_V2 = '''
     </div>
   {% endif %}
 
+  <button type="submit" class="update-btn">Update Prediction</button>
+
   <form id="feature-form" class="feature-select" method="get">
     <div class="feature-group">
       <span class="feature-label">Game:</span>
@@ -255,7 +257,6 @@ TEMPLATE_V2 = '''
         </label>
       {% endfor %}
     </div>
-    <button type="submit" class="update-btn">Update Prediction</button>
     <input type="hidden" name="manual" value="1">
   </form>
 

@@ -7,116 +7,81 @@ import shap
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import plotly.io as pio
 
 def calculate_shap_values(pipeline, X):
     """Calculate SHAP values for a sklearn pipeline with preprocessing"""
-    # Get the preprocessed features
     X_processed = pipeline.named_steps['pre'].transform(X)
-    
-    # Get the actual model (handle TransformedTargetRegressor if present)
     model = pipeline.named_steps['reg']
     if hasattr(model, 'regressor_'):
         model = model.regressor_
-
-    # Calculate SHAP values
     try:
         explainer = shap.TreeExplainer(model)
-        # Fix: Use np.bool_ instead of np.bool
-        X_missing = np.isnan(X_processed).astype(np.bool_)
         shap_values = explainer.shap_values(X_processed)
-        return shap_values
+        base_value = explainer.expected_value
+        return shap_values, base_value, explainer
     except Exception as e:
         print(f"SHAP calculation failed: {str(e)}")
         # Return dummy values in case of error
-        return np.zeros((X_processed.shape[0], X_processed.shape[1]))
+        return np.zeros((X_processed.shape[0], X_processed.shape[1])), 0, None
 
 def generate_shap_plots(pipeline, df, features):
-    """Generate four key SHAP plots as Plotly figures"""
-    # Calculate SHAP values
+    """Generate SHAP plots as Plotly figures (JSON)"""
     X = df[features]
-    shap_values = calculate_shap_values(pipeline, X)
+    shap_values, base_value, explainer = calculate_shap_values(pipeline, X)
 
-    # 1) Summary Plot (Bar)
+    # 1) Summary Plot (distribution, importance, direction)
+    summary_fig = shap.summary_plot(
+        shap_values, X, feature_names=features, show=False, plot_type="dot"
+    )
+    summary_plotly = pio.to_json(shap.plots._utils.matplotlib_to_plotly(summary_fig))
+
+    # 2) Dependence Plot (top feature, colored by second top feature)
+    top_features = np.argsort(np.abs(shap_values).mean(0))[-2:]
+    dep_feat = features[top_features[-1]]
+    color_feat = features[top_features[-2]]
+    dep_fig = shap.dependence_plot(
+        dep_feat, shap_values, X, interaction_index=color_feat, show=False
+    )
+    dep_plotly = pio.to_json(shap.plots._utils.matplotlib_to_plotly(dep_fig))
+
+    # 3) Force Plot (first sample)
+    force_plot_html = shap.force_plot(
+        base_value, shap_values[0], X.iloc[0], matplotlib=True, show=False
+    ).save_html(None)
+    # For dashboard, just pass the HTML string
+
+    # 4) Bar Plot (global importance)
     mean_abs_shap = np.abs(shap_values).mean(0)
     feature_importance = pd.DataFrame({
         'feature': features,
         'importance': mean_abs_shap
     }).sort_values('importance', ascending=True)
-
-    fig1 = go.Figure(go.Bar(
+    bar_fig = go.Figure(go.Bar(
         x=feature_importance['importance'],
         y=feature_importance['feature'],
         orientation='h'
     ))
-    fig1.update_layout(
-        title='SHAP Feature Importance',
+    bar_fig.update_layout(
+        title='SHAP Feature Importance (Bar)',
         xaxis_title='mean(|SHAP value|)',
         template='plotly_dark',
         plot_bgcolor='#1e1e1e',
         paper_bgcolor='#121212',
         font={'color': '#e0e0e0'}
     )
+    bar_plotly = bar_fig.to_json()
 
-    # 2) Scatter Plot (SHAP vs Feature) for top 3 features
-    top_features = feature_importance['feature'].tail(3).tolist()
-    fig2 = make_subplots(rows=1, cols=3)
-    
-    for i, feat in enumerate(top_features, 1):
-        idx = features.index(feat)
-        
-        # Check if feature is numeric
-        x_vals = X[feat]
-        is_numeric = pd.api.types.is_numeric_dtype(x_vals)
-        
-        if is_numeric:
-            marker_config = dict(
-                color=x_vals,
-                colorscale='RdBu',
-                showscale=True
-            )
-        else:
-            # For categorical features, use a single color
-            marker_config = dict(
-                color='#1e88e5',
-                opacity=0.6
-            )
-            
-        fig2.add_trace(
-            go.Scatter(
-                x=x_vals,
-                y=shap_values[:, idx],
-                mode='markers',
-                name=feat,
-                marker=marker_config
-            ),
-            row=1, col=i
-        )
-        
-        # Update axes
-        fig2.update_xaxes(
-            title_text=feat, 
-            row=1, col=i,
-            type='category' if not is_numeric else '-'
-        )
-        fig2.update_yaxes(
-            title_text='SHAP value' if i==1 else '', 
-            row=1, col=i
-        )
-
-    fig2.update_layout(
-        title='SHAP Dependence Plots (Feature Impact vs. Value)',
-        template='plotly_dark',
-        plot_bgcolor='#1e1e1e',
-        paper_bgcolor='#121212',
-        font={'color': '#e0e0e0'},
-        showlegend=False,
-        height=400
+    # 5) Decision Plot (first 10 samples)
+    decision_fig = shap.decision_plot(
+        base_value, shap_values[:10], X.iloc[:10], feature_names=features, show=False
     )
+    decision_plotly = pio.to_json(shap.plots._utils.matplotlib_to_plotly(decision_fig))
 
-    # Convert to JSON for template
-    plot_data = {
-        'summary': fig1.to_json(),
-        'dependence': fig2.to_json(),
+    return {
+        'summary': summary_plotly,
+        'dependence': dep_plotly,
+        'force': force_plot_html,
+        'bar': bar_plotly,
+        'decision': decision_plotly
     }
-    
-    return plot_data
