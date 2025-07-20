@@ -235,6 +235,20 @@ TEMPLATE_V2 = '''
     </div>
   {% endif %}
 
+  <h2>Start Time Analysis (Heat Map)</h2>
+  <div class="heatmap">
+    {% for cell in heatmap_cells %}
+      <div class="heatcell-wrap">
+        <div class="heatcell-label">{{ cell.label }}</div>
+        <div class="heatcell" style="background: {{ cell.bg }};"
+             title="Subs: {{ cell.avg_subs }}, Confidence: {{ cell.confidence }}">
+          {{ cell.avg_subs }}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  <div class="note">Red = lowest, Blue = highest predicted subs. Hover for details.</div>
+
   <h2>Game Category Comparison</h2>
   <table>
     <thead>
@@ -274,20 +288,6 @@ TEMPLATE_V2 = '''
       {% endfor %}
     </tbody>
   </table>
-
-  <h2>Start Time Analysis (Heat Map)</h2>
-  <div class="heatmap">
-    {% for cell in heatmap_cells %}
-      <div class="heatcell-wrap">
-        <div class="heatcell-label">{{ cell.label }}</div>
-        <div class="heatcell" style="background: {{ cell.bg }};"
-             title="Subs: {{ cell.avg_subs }}, Confidence: {{ cell.confidence }}">
-          {{ cell.avg_subs }}
-        </div>
-      </div>
-    {% endfor %}
-  </div>
-  <div class="note">Red = lowest, Blue = highest predicted subs. Hover for details.</div>
 </body>
 </html>
 '''
@@ -444,23 +444,28 @@ def show_feature_insights():
         ).to_dict('records')
 
     # 3) Start time analysis (heatmap)
+    # Filter to only thelegendyagami's data for the heatmap
+    legend_df = df[df['stream_name'] == stream_name].copy()
     time_df = (
-        df.groupby('start_time_hour')
+        legend_df.groupby('start_time_hour')
         .agg(avg_subs=('y_pred', 'mean'), confidence=('conf', 'mean'))
         .reset_index()
         .rename(columns={'start_time_hour': 'time'})
     )
     time_df['avg_subs'] = time_df['avg_subs'].round(2)
     time_df['confidence'] = time_df['confidence'].round(2)
+    
     # Fill missing hours with 0
     all_hours = pd.DataFrame({'time': list(range(24))})
     time_df = pd.merge(all_hours, time_df, on='time', how='left').fillna({'avg_subs': 0, 'confidence': 0})
 
     # Robust color normalization: ignore outliers
     subs_vals = time_df['avg_subs']
-    min_subs = np.percentile(subs_vals, 5)
+    min_subs = np.percentile(subs_vals[subs_vals > 0], 5)  # ignore zeros
     max_subs = np.percentile(subs_vals, 95)
     def interp_color(val):
+        if val == 0:
+            return "#333333"  # dark gray for empty slots
         # Clamp value to [min_subs, max_subs]
         val = max(min_subs, min(val, max_subs))
         if max_subs == min_subs:
