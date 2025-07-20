@@ -59,25 +59,48 @@ def generate_shap_plots(pipeline, df, features):
     
     for i, feat in enumerate(top_features, 1):
         idx = features.index(feat)
+        
+        # Check if feature is numeric
+        x_vals = X[feat]
+        is_numeric = pd.api.types.is_numeric_dtype(x_vals)
+        
+        if is_numeric:
+            marker_config = dict(
+                color=x_vals,
+                colorscale='RdBu',
+                showscale=True
+            )
+        else:
+            # For categorical features, use a single color
+            marker_config = dict(
+                color='#1e88e5',
+                opacity=0.6
+            )
+            
         fig2.add_trace(
             go.Scatter(
-                x=X[feat],
+                x=x_vals,
                 y=shap_values[:, idx],
                 mode='markers',
                 name=feat,
-                marker=dict(
-                    color=X[feat],
-                    colorscale='RdBu',
-                    showscale=True
-                )
+                marker=marker_config
             ),
             row=1, col=i
         )
-        fig2.update_xaxes(title_text=feat, row=1, col=i)
-        fig2.update_yaxes(title_text='SHAP value' if i==1 else '', row=1, col=i)
+        
+        # Update axes
+        fig2.update_xaxes(
+            title_text=feat, 
+            row=1, col=i,
+            type='category' if not is_numeric else '-'
+        )
+        fig2.update_yaxes(
+            title_text='SHAP value' if i==1 else '', 
+            row=1, col=i
+        )
 
     fig2.update_layout(
-        title='SHAP Dependence Plots',
+        title='SHAP Dependence Plots (Feature Impact vs. Value)',
         template='plotly_dark',
         plot_bgcolor='#1e1e1e',
         paper_bgcolor='#121212',
