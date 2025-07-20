@@ -57,7 +57,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
 
     # ── 2. Fast TreeExplainer on numeric data ─────────────────────────────
     explainer      = shap.TreeExplainer(base_model)
-    explanation    = explainer(X_proc, feature_names=feature_names)
+    explanation    = explainer(X_proc)
 
     imgs = {}
 
