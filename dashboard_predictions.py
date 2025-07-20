@@ -182,19 +182,19 @@ TEMPLATE = '''
 def show_predictions():
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
-    
+
     vary_tags = request.args.get('vary_tags') == 'on'
 
     # Query params
-    stream = (request.args.get('stream','thelegendyagami') or '').strip()
-    game   = (request.args.get('game','') or '').strip()
+    stream = (request.args.get('stream', 'thelegendyagami') or '').strip()
+    game   = (request.args.get('game', '') or '').strip()
     try:
-        top_n = max(1, min(50, int(request.args.get('top_n','10'))))
+        top_n = max(1, min(50, int(request.args.get('top_n', '10'))))
     except ValueError:
         top_n = 10
     today_name = datetime.now().strftime("%A")
 
-    # Render early if not ready
+    # Early return if not ready
     if not ready:
         return render_template_string(
             TEMPLATE,
@@ -211,21 +211,15 @@ def show_predictions():
             tag_effects=[]
         )
 
-    # Prepare data copy
+    # Prepare lookup maps
     df = df_for_inf.copy()
     df['stream_name_lc']   = df['stream_name'].str.lower()
     df['game_category_lc'] = df['game_category'].str.lower()
-
-    # Display maps
     stream_map = df.groupby('stream_name_lc')['stream_name'].last().to_dict()
     game_map   = df.groupby('game_category_lc')['game_category'].last().to_dict()
 
     stream_lc = stream.lower()
-    game_lc   = game.lower()
-    message = ""
-
     if stream_lc not in stream_map:
-        # 2) Unknown stream
         return render_template_string(
             TEMPLATE,
             ready=True,
@@ -241,17 +235,18 @@ def show_predictions():
             tag_effects=[]
         )
 
-    
     stream_disp = stream_map[stream_lc]
     cat_opts_lc = [c.lower() for c in (cat_opts or [])]
-
-    if game_lc and game_lc in cat_opts_lc:
-        sel_game_lc = game_lc
+    if game and game.lower() in cat_opts_lc:
+        sel_game_lc = game.lower()
     else:
-        if game_lc and game_lc not in cat_opts_lc:
+        if game and game.lower() not in cat_opts_lc:
             message = f"Game '{game}' not found. Using last recorded for stream."
+        else:
+            message = ""
         sel_game_lc = df.loc[df['stream_name_lc']==stream_lc, 'game_category_lc'].iloc[-1]
 
+    # Run inference
     top_df = _infer_grid_for_game(
         pipe, df_for_inf, features,
         stream_name=stream_disp,
@@ -262,13 +257,12 @@ def show_predictions():
         unique_scores=True,
         vary_tags=vary_tags,
     )
-    if not top_df.empty:
-        best_tags = top_df.loc[0, 'tags']
-    else:
-        best_tags = []
+
+    # Ensure conf column exists
     if 'conf' not in top_df.columns:
         top_df['conf'] = np.nan
 
+    # Tag-effects mode: return that table and skip any `tags` lookup
     if vary_tags:
         tag_effects = top_df.to_dict('records')
         return render_template_string(
@@ -279,22 +273,18 @@ def show_predictions():
             top_n=top_n,
             today_name=today_name,
             cat_opts=cat_opts or [],
-            message="",
-            best_tags=[],
-            vary_tags=vary_tags,
+            message=message,
+            vary_tags=True,
             tag_effects=tag_effects
         )
-    
-    best_tags = top_df.loc[0, 'tags'] if not top_df.empty else []
-    if 'conf' not in top_df.columns:
-        top_df['conf'] = np.nan
 
+    # Normal mode: pick off best_tags and render predictions grid
+    best_tags = top_df.loc[0, 'tags'] if not top_df.empty else []
     disp = top_df.copy()
-    disp['Time']          = disp['start_time_hour'].astype(int).map(lambda h: f"{h:02d}:00")
-    disp['Duration']      = disp['stream_duration'].astype(int)
-    # disp['Expected_Subs'] = disp['y_pred'].round().astype(int)
-    disp['Expected_Subs'] = disp['y_pred'].round(1)
-    disp['Confidence']    = disp['conf'].apply(lambda v: "?" if pd.isna(v) else f"{float(v):.2f}")
+    disp['Time']           = disp['start_time_hour'].astype(int).map(lambda h: f"{h:02d}:00")
+    disp['Duration']       = disp['stream_duration'].astype(int)
+    disp['Expected_Subs']  = disp['y_pred'].round(1)
+    disp['Confidence']     = disp['conf'].apply(lambda v: "?" if pd.isna(v) else f"{float(v):.2f}")
 
     return render_template_string(
         TEMPLATE,
@@ -305,9 +295,8 @@ def show_predictions():
         today_name=today_name,
         cat_opts=cat_opts or [],
         predictions=disp[['Time','Duration','Expected_Subs','Confidence']].to_dict('records'),
-        message="",
+        message=message,
         best_tags=best_tags,
-        vary_tags=vary_tags,
+        vary_tags=False,
         tag_effects=[]
     )
-
