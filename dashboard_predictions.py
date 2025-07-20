@@ -262,6 +262,7 @@ def show_predictions():
         top_n=top_n,
         unique_scores=True,
         vary_tags=vary_tags,
+        tag_effects=[],
     )
     if not top_df.empty:
         best_tags = top_df.loc[0, 'tags']
