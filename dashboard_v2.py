@@ -195,9 +195,15 @@ def show_feature_insights():
         unique_scores=True,
         vary_tags=True,
     )
-    tag_insights = tag_effects[['tags', 'delta_from_baseline', 'y_pred']].rename(
-        columns={'delta_from_baseline': 'delta', 'y_pred': 'subs'}
-    ).to_dict('records')
+    # Select correct columns for vary_tags mode
+    if 'tag' in tag_effects.columns:
+        tag_insights = tag_effects[['tag', 'delta_from_baseline', 'y_pred']].rename(
+            columns={'tag': 'tags', 'delta_from_baseline': 'delta', 'y_pred': 'subs'}
+        ).to_dict('records')
+    else:
+        tag_insights = tag_effects[['tags', 'delta_from_baseline', 'y_pred']].rename(
+            columns={'delta_from_baseline': 'delta', 'y_pred': 'subs'}
+        ).to_dict('records')
 
     # 3) Start time analysis
     time_insights = (
