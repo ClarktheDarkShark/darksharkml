@@ -126,17 +126,109 @@ TEMPLATE_V2 = '''
     .date-form button:hover {
       background: #1565c0;
     }
+    .feature-select { margin-bottom: 2rem; }
+    .feature-group { margin-bottom: 1rem; }
+    .feature-label { font-weight: bold; margin-right: 1rem; }
+    .feature-btn {
+      background: var(--card);
+      color: var(--fg);
+      border: 1px solid #333;
+      border-radius: var(--radius);
+      padding: 0.4rem 1rem;
+      margin-right: 0.5rem;
+      margin-bottom: 0.3rem;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background 0.2s;
+    }
+    .feature-btn.selected, .feature-btn:active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .feature-btn:hover { background: #1565c0; color: #fff; }
+    .tag-btn { font-size: 0.95rem; }
+    .update-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0.6rem 1.5rem;
+      font-size: 1.1rem;
+      cursor: pointer;
+      margin-top: 1rem;
+      margin-bottom: 2rem;
+    }
+    .update-btn:hover { background: #1565c0; }
+    .pred-result {
+      background: var(--card);
+      color: var(--fg);
+      border-radius: var(--radius);
+      padding: 1rem;
+      margin-bottom: 2rem;
+      font-size: 1.15rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
   </style>
+  <script>
+    function selectFeature(name, value, multi=false) {
+      if (multi) {
+        var input = document.getElementById('input_' + name + '_' + value);
+        input.checked = !input.checked;
+      } else {
+        var inputs = document.querySelectorAll('input[name="' + name + '"]');
+        inputs.forEach(i => i.checked = false);
+        document.getElementById('input_' + name + '_' + value).checked = true;
+      }
+      document.getElementById('feature-form').submit();
+    }
+  </script>
 </head>
 <body>
   <h1>Feature Insights for “thelegendyagami”</h1>
-  <form class="date-form" method="get">
-    <label for="date">Select date:</label>
-    <input type="date" id="date" name="date" value="{{ selected_date }}">
-    <button type="submit">Update</button>
+  <form id="feature-form" class="feature-select" method="get">
+    <div class="feature-group">
+      <span class="feature-label">Game:</span>
+      {% for g in game_opts %}
+        <label>
+          <input type="radio" name="game" id="input_game_{{g}}" value="{{g}}" {% if g==selected_game %}checked{% endif %} style="display:none;">
+          <button type="button" class="feature-btn {% if g==selected_game %}selected{% endif %}" onclick="selectFeature('game','{{g}}')">{{g}}</button>
+        </label>
+      {% endfor %}
+    </div>
+    <div class="feature-group">
+      <span class="feature-label">Start Time:</span>
+      {% for h in start_opts %}
+        <label>
+          <input type="radio" name="start_time" id="input_start_time_{{h}}" value="{{h}}" {% if h==selected_start_time %}checked{% endif %} style="display:none;">
+          <button type="button" class="feature-btn {% if h==selected_start_time %}selected{% endif %}" onclick="selectFeature('start_time','{{h}}')">{{"%02d:00"|format(h)}}</button>
+        </label>
+      {% endfor %}
+    </div>
+    <div class="feature-group">
+      <span class="feature-label">Tags:</span>
+      {% for t in tag_opts %}
+        <label>
+          <input type="checkbox" name="tags" id="input_tags_{{t}}" value="{{t}}" {% if t in selected_tags %}checked{% endif %} style="display:none;">
+          <button type="button" class="feature-btn tag-btn {% if t in selected_tags %}selected{% endif %}" onclick="selectFeature('tags','{{t}}',true)">{{t}}</button>
+        </label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="update-btn">Update</button>
+    <input type="hidden" name="manual" value="1">
   </form>
-  <h2>Predictions for streaming on date: {{today_name}}</h2>
-  
+
+  {% if pred_result %}
+    <div class="pred-result">
+      <strong>Prediction for selected features:</strong><br>
+      <b>Game:</b> {{selected_game}}<br>
+      <b>Start Time:</b> {{selected_start_time|default('')}}:00<br>
+      <b>Tags:</b> {{selected_tags|join(', ')}}<br>
+      <b>Predicted Subs:</b> {{pred_result.y_pred}}<br>
+      <b>Confidence:</b> {{pred_result.conf}}
+    </div>
+  {% endif %}
+
   <h2>Game Category Comparison</h2>
   <table>
     <thead>
@@ -202,39 +294,62 @@ def show_feature_insights():
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
 
-    # Get date from query param, default to today
-    date_str = request.args.get('date')
-    if date_str:
-        try:
-            selected_date = date_str
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
-            today_name = dt.strftime("%A")
-        except Exception:
-            selected_date = datetime.now().strftime("%Y-%m-%d")
-            today_name = datetime.now().strftime("%A")
-    else:
-        selected_date = datetime.now().strftime("%Y-%m-%d")
-        today_name = datetime.now().strftime("%A")
-
     stream_name = "thelegendyagami"
+    today_name = "Saturday"
 
-    if not ready:
-        return render_template_string(
-            TEMPLATE_V2,
-            today_name=today_name,
-            selected_date=selected_date,
-            game_insights=[],
-            tag_insights=[],
-            heatmap_cells=[]
-        )
+    # Feature selection from query params
+    selected_game = request.args.get('game', cat_opts[0] if cat_opts else '')
+    try:
+        selected_start_time = int(request.args.get('start_time', start_opts[0] if start_opts else 0))
+    except Exception:
+        selected_start_time = start_opts[0] if start_opts else 0
+    selected_tags = request.args.getlist('tags')
+    manual = request.args.get('manual', None)
+
+    # Get all possible tags for buttons
+    tag_cols = [c for c in features if c.startswith('tag_')]
+    tag_opts = [c[len('tag_'):] for c in tag_cols]
+
+    pred_result = None
+    if manual and ready:
+        # Build feature row for prediction
+        last_row = df_for_inf[df_for_inf["stream_name"] == stream_name].iloc[-1].copy()
+        last_row['game_category'] = selected_game
+        last_row['start_time_hour'] = selected_start_time
+        # Set tags
+        for t in tag_opts:
+            last_row['tag_' + t] = 1 if t in selected_tags else 0
+        # Predict
+        X = last_row[features].to_frame().T
+        y_pred = pipe.predict(X)[0]
+        # Confidence
+        try:
+            pre = pipe.named_steps['pre']
+            X_pre = pre.transform(X)
+            model = pipe.named_steps['reg']
+            from sklearn.compose import TransformedTargetRegressor
+            if isinstance(model, TransformedTargetRegressor):
+                model = model.regressor_
+            if hasattr(model, 'estimators_'):
+                all_tree_preds = np.stack([t.predict(X_pre) for t in model.estimators_], axis=1)
+                sigma = all_tree_preds.std(axis=1)
+            else:
+                sigma = np.full(len(X_pre), fill_value=np.mean(y_pred)*0.01)
+            conf = float(1.0 / (1.0 + sigma[0]))
+        except Exception:
+            conf = float('nan')
+        pred_result = {
+            'y_pred': round(y_pred, 2),
+            'conf': round(conf, 2) if not np.isnan(conf) else '?'
+        }
 
     # Generate predictions for each row in df_for_inf
     df = df_for_inf.copy()
-    df['y_pred'] = pipe.predict(df[features])
+    df['y_pred'] = pipe.predict(df[features]) if ready else 0
     # Confidence: 1/(1+std) across trees if available
     try:
         pre = pipe.named_steps['pre']
-        X_pre = pre.transform(df[features])
+        X_pre = pre.transform(df[features]) if ready else np.zeros((len(df), len(features)))
         model = pipe.named_steps['reg']
         from sklearn.compose import TransformedTargetRegressor
         if isinstance(model, TransformedTargetRegressor):
@@ -272,7 +387,7 @@ def show_feature_insights():
         top_n=100,
         unique_scores=True,
         vary_tags=True,
-        today_name=today_name,  # pass the selected day name
+        today_name=today_name,  # always "Saturday"
     )
     if 'tag' in tag_effects.columns:
         tag_effects = tag_effects[abs(tag_effects['delta_from_baseline']) > 0.01]
@@ -332,7 +447,14 @@ def show_feature_insights():
     return render_template_string(
         TEMPLATE_V2,
         today_name=today_name,
-        selected_date=selected_date,
+        selected_date=datetime.now().strftime("%Y-%m-%d"),
+        game_opts=cat_opts,
+        start_opts=start_opts,
+        tag_opts=tag_opts,
+        selected_game=selected_game,
+        selected_start_time=selected_start_time,
+        selected_tags=selected_tags,
+        pred_result=pred_result,
         game_insights=game_insights,
         tag_insights=tag_insights,
         heatmap_cells=heatmap_cells
