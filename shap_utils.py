@@ -1,5 +1,9 @@
-import shap
 import numpy as np
+# Patch np.bool for SHAP compatibility with NumPy >=1.24
+if not hasattr(np, 'bool'):
+    np.bool = bool
+
+import shap
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots

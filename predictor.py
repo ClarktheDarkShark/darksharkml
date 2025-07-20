@@ -331,7 +331,7 @@ def _infer_grid_for_game(
         for tag in tag_cols:
             mod = base.copy()
             # flip this tag
-            mod[tag] = 1 - mod[tag].iloc[0]
+            mod[tag] = 1 if base[tag].iloc[0] == 0 else 0
             y_mod   = pipeline.predict(mod)[0]
             records.append({
                 'tag': tag[len('tag_'):],               # strip prefix
