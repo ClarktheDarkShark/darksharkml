@@ -56,8 +56,8 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     base_model     = reg.regressor_ if hasattr(reg, "regressor_") else reg
 
     # ── 2. Fast TreeExplainer on numeric data ─────────────────────────────
-    explainer      = shap.TreeExplainer(base_model)
-    explanation    = explainer(X_proc)
+    explainer   = shap.TreeExplainer(base_model, data=X_proc, feature_names=feature_names)
+    explanation = explainer(X_proc) 
 
     imgs = {}
 
