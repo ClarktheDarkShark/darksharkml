@@ -261,7 +261,7 @@ def show_predictions():
         durations=dur_opts,
         category_options=[sel_game_lc],
         top_n=top_n,
-        unique_scores=True,
+        unique_scores=False,
         vary_tags=vary_tags,
     )
 
