@@ -17,6 +17,24 @@ import shap
 import matplotlib.pyplot as plt
 import io, base64
 
+# Save original
+_orig_colorbar = plt.colorbar
+
+def _debug_colorbar(mappable=None, cax=None, ax=None, *args, **kwargs):
+    print(">>> DEBUG colorbar invoked!")
+    print("   mappable:", repr(mappable))
+    print("   ax param:", ax)
+    print("   cax param:", cax)
+    print("   plt.gca():", plt.gca())
+    fig = plt.gcf()
+    print("   fig.axes:", fig.axes)
+    for i, a in enumerate(fig.axes):
+        print(f"     axes[{i}] children types:", [type(ch) for ch in a.get_children()][:5], "…")
+    # call through so we see the real error (or not)
+    return _orig_colorbar(mappable, cax=cax, ax=ax, *args, **kwargs)
+
+# Override
+plt.colorbar = _debug_colorbar
 
 # ── tiny helper to turn figures into base-64 PNGs ──────────────────────────
 def _fig_to_b64(fig) -> str:
