@@ -188,8 +188,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
         shap_vals,             # <- second required arg
         features=X_raw.iloc[:10],          # optional overlay
         feature_names=feature_names,       # optional
-        show=False,
-        matplotlib=False
+        show=False
     )
     out["decision"] = dec_fig.to_html(full_html=False)
 
