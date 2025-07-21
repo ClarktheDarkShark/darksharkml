@@ -186,7 +186,7 @@ def _train_model(df_daily: pd.DataFrame):
             "reg__regressor__n_estimators":    [200, 600, 1000],
             "reg__regressor__min_samples_leaf":[3, 5, 10, 50],
             "reg__regressor__min_samples_split":[5, 10, 50],
-            "reg__regressor__max_features":    ['sqrt', 0.5, 0.8, 1.0],
+            "reg__regressor__max_features":    ['sqrt', 0.5, .8, 1.0],
             "reg__regressor__max_depth": [None, 5, 10]
         }
     elif mod == 'hgb':

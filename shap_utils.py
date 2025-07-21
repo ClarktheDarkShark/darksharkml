@@ -66,7 +66,6 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     feature_names=feature_names
     )
 
-    # disable the tiny-difference assertion that is crashing you
     explanation = explainer(X_proc, check_additivity=False)
 
     imgs = {}
