@@ -9,8 +9,10 @@ Assumes pipeline = Pipeline([('pre', ...), ('reg', TransformedTargetRegressor(..
 
 # ── imports ────────────────────────────────────────────────────────────────
 import numpy as np
-if not hasattr(np, "bool"):          # SHAP < 0.44 expects np.bool
+if not hasattr(np, 'bool'):
     np.bool = bool
+if not hasattr(np, 'float'):
+    np.float = float
 
 import pandas as pd                  # only used for typing / slicing
 import shap
