@@ -315,10 +315,44 @@ TEMPLATE_V2 = '''
   </table>
 
   <h2>Feature Impact Analysis (SHAP)</h2>
-  <div class="shap-container">
-    <div id="shap-summary"></div>
-    <div id="shap-dependence"></div>
-  </div>
+    <div class="shap-container">
+    <div id="shap-summary">
+        <h3>Summary Plot</h3>
+        <img 
+        src="data:image/png;base64,{{ shap_plots.summary }}" 
+        alt="SHAP summary plot" 
+        style="max-width:100%;border-radius:8px;"
+        />
+    </div>
+    <div id="shap-dependence">
+        <h3>Dependence Plot</h3>
+        <img 
+        src="data:image/png;base64,{{ shap_plots.dependence }}" 
+        alt="SHAP dependence plot" 
+        style="max-width:100%;border-radius:8px;"
+        />
+    </div>
+    <div id="shap-bar">
+        <h3>Bar Plot</h3>
+        <img 
+        src="data:image/png;base64,{{ shap_plots.bar }}" 
+        alt="SHAP bar plot" 
+        style="max-width:100%;border-radius:8px;"
+        />
+    </div>
+    <div id="shap-decision">
+        <h3>Decision Plot</h3>
+        <img 
+        src="data:image/png;base64,{{ shap_plots.decision }}" 
+        alt="SHAP decision plot" 
+        style="max-width:100%;border-radius:8px;"
+        />
+    </div>
+    <div id="shap-force">
+        <h3>Force Plot</h3>
+        {{ shap_plots.force | safe }}
+    </div>
+    </div>
   
   <!-- Add Plotly.js -->
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
@@ -552,7 +586,7 @@ def show_feature_insights():
     print("DEBUG: passing shap_plots to template:")
     for name, blob in shap_plots.items():
         print(f"  {name}: {type(blob)} length={len(blob)}")
-        
+
     return render_template_string(
         TEMPLATE_V2,
         today_name=today_name,
