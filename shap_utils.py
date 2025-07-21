@@ -179,17 +179,24 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     )
     out["force"] = force_vis.html()
 
-    # ── 4. Interactive decision plot via SHAP’s Plotly backend
-    base        = explainer.expected_value           # scalar (or length-1 array)
-    shap_vals   = explanation.values[:10]            # (#samples x #features)
+    # ── 4. Interactive decision plot ────────────────────────────────
+    base      = explainer.expected_value        # scalar
+    shap_vals = explanation.values[:10]         # (#samples × #features)
 
     dec_fig = shap.plots.decision(
-        base,                  # <- first required arg
-        shap_vals,             # <- second required arg
-        features=X_raw.iloc[:10],          # optional overlay
-        feature_names=feature_names,       # optional
-        show=False
+        base,                     # required arg #1
+        shap_vals,                # required arg #2
+        features=X_raw.iloc[:10], # optional overlay
+        feature_names=feature_names,
+        show=False                # suppress auto‐open tab
     )
-    out["decision"] = dec_fig.to_html(full_html=False)
+    # dec_fig will be None when SHAP draws the chart inline (Plotly backend)
+    if dec_fig is not None and hasattr(dec_fig, "to_html"):
+        out["decision"] = dec_fig.to_html(full_html=False)
+    else:
+        # nothing to embed – SHAP already inserted a <script> into the page
+        out["decision"] = (
+            "<p><em>Decision plot rendered inline by SHAP.</em></p>"
+        )
 
     return out
