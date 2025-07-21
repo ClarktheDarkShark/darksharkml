@@ -549,6 +549,10 @@ def show_feature_insights():
     else:
         shap_plots = {'summary': '{}', 'dependence': '{}'}
 
+    print("DEBUG: passing shap_plots to template:")
+    for name, blob in shap_plots.items():
+        print(f"  {name}: {type(blob)} length={len(blob)}")
+        
     return render_template_string(
         TEMPLATE_V2,
         today_name=today_name,
