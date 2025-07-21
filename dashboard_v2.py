@@ -260,99 +260,36 @@ TEMPLATE_V2 = '''
     <input type="hidden" name="manual" value="1">
   </form>
 
-  <h2>Start Time Analysis (Heat Map)</h2>
-  <div class="heatmap">
-    {% for cell in heatmap_cells %}
-      <div class="heatcell-wrap">
-        <div class="heatcell-label">{{ cell.label }}</div>
-        <div class="heatcell" style="background: {{ cell.bg }};"
-             title="Subs: {{ cell.avg_subs }}, Confidence: {{ cell.confidence }}">
-          {{ cell.avg_subs }}
-        </div>
-      </div>
-    {% endfor %}
-  </div>
-  <div class="note">Red = lowest, Blue = highest predicted subs. Hover for details.</div>
-
-  <h2>Game Category Comparison</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Game Category</th>
-        <th>Average Predicted Subs</th>
-        <th>Confidence</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in game_insights %}
-      <tr>
-        <td>{{ row.game }}</td>
-        <td>{{ row.avg_subs }}</td>
-        <td>{{ row.confidence }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <h2>Tag Combination Effects</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Tag Combination</th>
-        <th>Δ Predicted Subs</th>
-        <th>Predicted Subs</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in tag_insights %}
-      <tr>
-        <td>{{ row.tags }}</td>
-        <td>{{ row.delta }}</td>
-        <td>{{ row.subs }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
   <h2>Feature Impact Analysis (SHAP)</h2>
     <div class="shap-container">
+
     <div id="shap-summary">
         <h3>Summary Plot</h3>
-        <img 
-        src="data:image/png;base64,{{ shap_plots.summary }}" 
-        alt="SHAP summary plot" 
-        style="max-width:70%;border-radius:8px;"
-        />
+        {{ shap_plots.summary | safe }}
     </div>
+
     <div id="shap-dependence">
         <h3>Dependence Plot</h3>
-        <img 
-        src="data:image/png;base64,{{ shap_plots.dependence }}" 
-        alt="SHAP dependence plot" 
-        style="max-width:70%;border-radius:8px;"
-        />
+        {{ shap_plots.dependence | safe }}
     </div>
+
     <div id="shap-bar">
         <h3>Bar Plot</h3>
-        <img 
-        src="data:image/png;base64,{{ shap_plots.bar }}" 
-        alt="SHAP bar plot" 
-        style="max-width:70%;border-radius:8px;"
-        />
+        {{ shap_plots.bar | safe }}
     </div>
+
     <div id="shap-decision">
         <h3>Decision Plot</h3>
-        <img 
-        src="data:image/png;base64,{{ shap_plots.decision }}" 
-        alt="SHAP decision plot" 
-        style="max-width:70%;border-radius:8px;"
-        />
+        {{ shap_plots.decision | safe }}
     </div>
+
     <div id="shap-force">
         <h3>Force Plot</h3>
         {{ shap_plots.force | safe }}
     </div>
+
     </div>
+
   
   <!-- Add Plotly.js -->
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
