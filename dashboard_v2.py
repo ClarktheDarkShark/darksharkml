@@ -321,7 +321,7 @@ TEMPLATE_V2 = '''
         <img 
         src="data:image/png;base64,{{ shap_plots.summary }}" 
         alt="SHAP summary plot" 
-        style="max-width:100%;border-radius:8px;"
+        style="max-width:70%;border-radius:8px;"
         />
     </div>
     <div id="shap-dependence">
@@ -329,7 +329,7 @@ TEMPLATE_V2 = '''
         <img 
         src="data:image/png;base64,{{ shap_plots.dependence }}" 
         alt="SHAP dependence plot" 
-        style="max-width:100%;border-radius:8px;"
+        style="max-width:70%;border-radius:8px;"
         />
     </div>
     <div id="shap-bar">
@@ -337,7 +337,7 @@ TEMPLATE_V2 = '''
         <img 
         src="data:image/png;base64,{{ shap_plots.bar }}" 
         alt="SHAP bar plot" 
-        style="max-width:100%;border-radius:8px;"
+        style="max-width:70%;border-radius:8px;"
         />
     </div>
     <div id="shap-decision">
@@ -345,7 +345,7 @@ TEMPLATE_V2 = '''
         <img 
         src="data:image/png;base64,{{ shap_plots.decision }}" 
         alt="SHAP decision plot" 
-        style="max-width:100%;border-radius:8px;"
+        style="max-width:70%;border-radius:8px;"
         />
     </div>
     <div id="shap-force">
