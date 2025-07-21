@@ -115,7 +115,12 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
 
     # Decision plot – first 10 observations
     fig = plt.figure()
-    shap.plots.decision(explanation[:10], show=False)
+    shap.decision_plot(
+        explanation.base_values[0],    # single base value for all samples
+        explanation.values[:10],       # your first 10 rows of SHAP values
+        feature_names,                 # your array of names
+        show=False
+    )
     imgs["decision"] = _fig_to_b64(fig)
 
     return imgs
