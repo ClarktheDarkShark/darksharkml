@@ -17,24 +17,6 @@ import shap
 import matplotlib.pyplot as plt
 import io, base64
 
-# Save original
-_orig_colorbar = plt.colorbar
-
-def _debug_colorbar(mappable=None, cax=None, ax=None, *args, **kwargs):
-    print(">>> DEBUG colorbar invoked!")
-    print("   mappable:", repr(mappable))
-    print("   ax param:", ax)
-    print("   cax param:", cax)
-    print("   plt.gca():", plt.gca())
-    fig = plt.gcf()
-    print("   fig.axes:", fig.axes)
-    for i, a in enumerate(fig.axes):
-        print(f"     axes[{i}] children types:", [type(ch) for ch in a.get_children()][:5], "…")
-    # call through so we see the real error (or not)
-    return _orig_colorbar(mappable, cax=cax, ax=ax, *args, **kwargs)
-
-# Override
-plt.colorbar = _debug_colorbar
 
 # ── tiny helper to turn figures into base-64 PNGs ──────────────────────────
 def _fig_to_b64(fig) -> str:
@@ -45,6 +27,7 @@ def _fig_to_b64(fig) -> str:
     return base64.b64encode(buf.read()).decode()
 
 
+# ── main API used by dashboard_v2.py ───────────────────────────────────────
 def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict[str, str]:
     """
     Parameters
@@ -63,60 +46,42 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     """
 
     # ── 1. Build a numeric feature matrix & readable one-hot names ────────
-    X_raw         = df[features]
-    print("DEBUG: X_raw dtypes:", X_raw.dtypes.to_dict())
-    pre           = pipeline.named_steps["pre"]
-    X_proc        = pre.transform(X_raw)
-    print("DEBUG: X_proc shape:", X_proc.shape)
-    feature_names = pre.get_feature_names_out(features)
-    print("DEBUG: feature_names:", feature_names[:5], "...")
+    X_raw          = df[features]
+    pre            = pipeline.named_steps["pre"]
+    X_proc         = pre.transform(X_raw)
+    feature_names  = pre.get_feature_names_out(features)
 
     # unwrap the RandomForest inside TransformedTargetRegressor
-    reg         = pipeline.named_steps["reg"]
-    base_model  = reg.regressor_ if hasattr(reg, "regressor_") else reg
-    print("DEBUG: base_model type:", type(base_model))
+    reg            = pipeline.named_steps["reg"]
+    base_model     = reg.regressor_ if hasattr(reg, "regressor_") else reg
 
     # ── 2. Fast TreeExplainer on numeric data ─────────────────────────────
-    explainer = shap.TreeExplainer(
-        base_model,
-        data=X_proc,
-        feature_names=feature_names
+    explainer   = shap.TreeExplainer(
+    base_model,                     # the RandomForestRegressor you un-wrapped
+    data=X_proc,                    # numeric matrix same shape as training
+    feature_names=feature_names
     )
-    print("DEBUG: Explainer type:", type(explainer))
 
-    # disable the tiny-difference assertion that was crashing you
-    try:
-        explanation = explainer(X_proc, check_additivity=False)
-    except Exception as e:
-        print("DEBUG: explainer(...) failed with:", repr(e))
-        raise
-    print("DEBUG: explanation.values.shape:", explanation.values.shape)
-    print("DEBUG: explanation.base_values (first 5):", explanation.base_values[:5])
+    # disable the tiny-difference assertion that is crashing you
+    explanation = explainer(X_proc, check_additivity=False)
 
     imgs = {}
 
-    # ── Beeswarm (feature importance + direction) ────────────────────────
-    fig, ax = plt.subplots()
-    print("DEBUG: fig.axes BEFORE beeswarm:", fig.axes)
-
+    # Beeswarm (feature importance + direction)
+    fig = plt.figure()
     try:
-        # capture whatever beeswarm returns (often a PathCollection or QuadMesh)
-        mappable = shap.plots.beeswarm(explanation, show=False)
-        print("DEBUG: beeswarm returned mappable:", type(mappable))
-    except Exception as e:
-        print("DEBUG: beeswarm ERROR:", repr(e))
-        # inspect the Axes list
-        axes = fig.get_axes()
-        print(f"DEBUG: fig has {len(axes)} axes:")
-        for idx, a in enumerate(axes):
-            print(f"  axes[{idx}] = {a}")
-            print("    children count:", len(a.get_children()))
-            print("    xlim, ylim:", a.get_xlim(), a.get_ylim())
-        # inspect figure children too
-        print("DEBUG: fig.get_children():", fig.get_children()[:5], "… (total", len(fig.get_children()), ")")
-        raise
-
-    print("DEBUG: fig.axes AFTER beeswarm:", fig.axes)
+        shap.plots.beeswarm(explanation, show=False)
+    except ValueError as ve:
+        # fallback to the legacy API without a colorbar
+        print(f"DEBUG: beeswarm failed ({ve}), falling back to summary_plot")
+        shap.summary_plot(
+            explanation.values,        # raw SHAP array
+            X_proc,                    # numeric matrix
+            feature_names=feature_names,
+            plot_type="dot",           # same dots style
+            color_bar=False,           # TURN COLORBAR OFF
+            show=False
+        )
     imgs["summary"] = _fig_to_b64(fig)
 
     # Dependence: top feature vs. second feature colour map
