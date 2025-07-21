@@ -27,7 +27,6 @@ def _fig_to_b64(fig) -> str:
     return base64.b64encode(buf.read()).decode()
 
 
-# ── main API used by dashboard_v2.py ───────────────────────────────────────
 def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict[str, str]:
     """
     Parameters
@@ -46,30 +45,49 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     """
 
     # ── 1. Build a numeric feature matrix & readable one-hot names ────────
-    X_raw          = df[features]
-    pre            = pipeline.named_steps["pre"]
-    X_proc         = pre.transform(X_raw)
-    feature_names  = pre.get_feature_names_out(features)
+    X_raw         = df[features]
+    print("DEBUG: X_raw dtypes:", X_raw.dtypes.to_dict())
+    pre           = pipeline.named_steps["pre"]
+    X_proc        = pre.transform(X_raw)
+    print("DEBUG: X_proc shape:", X_proc.shape)
+    feature_names = pre.get_feature_names_out(features)
+    print("DEBUG: feature_names:", feature_names[:5], "...")
 
     # unwrap the RandomForest inside TransformedTargetRegressor
-    reg            = pipeline.named_steps["reg"]
-    base_model     = reg.regressor_ if hasattr(reg, "regressor_") else reg
+    reg         = pipeline.named_steps["reg"]
+    base_model  = reg.regressor_ if hasattr(reg, "regressor_") else reg
+    print("DEBUG: base_model type:", type(base_model))
 
     # ── 2. Fast TreeExplainer on numeric data ─────────────────────────────
-    explainer   = shap.TreeExplainer(
-    base_model,                     # the RandomForestRegressor you un-wrapped
-    data=X_proc,                    # numeric matrix same shape as training
-    feature_names=feature_names
+    explainer = shap.TreeExplainer(
+        base_model,
+        data=X_proc,
+        feature_names=feature_names
     )
+    print("DEBUG: Explainer type:", type(explainer))
 
-    # disable the tiny-difference assertion that is crashing you
-    explanation = explainer(X_proc, check_additivity=False)
+    # disable the tiny-difference assertion that was crashing you
+    try:
+        explanation = explainer(X_proc, check_additivity=False)
+    except Exception as e:
+        print("DEBUG: explainer(...) failed with:", repr(e))
+        raise
+    print("DEBUG: explanation.values.shape:", explanation.values.shape)
+    print("DEBUG: explanation.base_values (first 5):", explanation.base_values[:5])
 
     imgs = {}
 
-    # Beeswarm (feature importance + direction)
-    fig = plt.figure()
-    shap.plots.beeswarm(explanation, show=False)
+    # ── Beeswarm (feature importance + direction) ────────────────────────
+    fig, ax = plt.subplots()
+    print("DEBUG: fig.axes BEFORE beeswarm:", fig.axes)
+    try:
+        shap.plots.beeswarm(explanation, show=False)
+        print("DEBUG: beeswarm completed successfully")
+    except Exception as e:
+        print("DEBUG: beeswarm ERROR:", repr(e))
+        print("DEBUG: fig.axes AT ERROR:", fig.axes)
+        raise
+    print("DEBUG: fig.axes AFTER beeswarm:", fig.axes)
     imgs["summary"] = _fig_to_b64(fig)
 
     # Dependence: top feature vs. second feature colour map
