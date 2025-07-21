@@ -97,10 +97,15 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     imgs["dependence"] = _fig_to_b64(fig)
 
     # Force plot – first sample, HTML widget
-    imgs["force"] = shap.plots.force(
+    # get the Visualizer
+    force_vis = shap.plots.force(
         explanation[0],
-        matplotlib=False
-    ).save_html()
+        matplotlib=False,
+        show=False
+    )
+
+    # Option A: grab just the snippet
+    force_html = force_vis.html()
 
     # Global bar plot (mean |SHAP|)
     fig = plt.figure()
