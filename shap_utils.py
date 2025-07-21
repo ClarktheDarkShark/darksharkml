@@ -181,7 +181,10 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
 
     # ── 4. Interactive decision plot via SHAP’s Plotly backend
     dec_fig = shap.plots.decision(
-      explanation, display_features=X_raw, show=False, matplotlib=False
+      explanation,
+      features=X_raw,       # renamed from display_features → features
+      show=False,
+      matplotlib=False
     )
     out["decision"] = dec_fig.to_html(full_html=False)
 
