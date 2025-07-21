@@ -183,8 +183,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     dec_fig = shap.plots.decision(
       explanation,
       features=X_raw,       # renamed from display_features → features
-      show=False,
-      matplotlib=False
+      show=False
     )
     out["decision"] = dec_fig.to_html(full_html=False)
 
