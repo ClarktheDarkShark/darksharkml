@@ -13,6 +13,8 @@ if not hasattr(np, 'bool'):
     np.bool = bool
 if not hasattr(np, 'float'):
     np.float = float
+if not hasattr(np, 'object'):
+    np.object = object
 
 import pandas as pd                  # only used for typing / slicing
 import shap
