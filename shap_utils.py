@@ -80,13 +80,24 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     # ── Beeswarm (feature importance + direction) ────────────────────────
     fig, ax = plt.subplots()
     print("DEBUG: fig.axes BEFORE beeswarm:", fig.axes)
+
     try:
-        shap.plots.beeswarm(explanation, show=False)
-        print("DEBUG: beeswarm completed successfully")
+        # capture whatever beeswarm returns (often a PathCollection or QuadMesh)
+        mappable = shap.plots.beeswarm(explanation, show=False)
+        print("DEBUG: beeswarm returned mappable:", type(mappable))
     except Exception as e:
         print("DEBUG: beeswarm ERROR:", repr(e))
-        print("DEBUG: fig.axes AT ERROR:", fig.axes)
+        # inspect the Axes list
+        axes = fig.get_axes()
+        print(f"DEBUG: fig has {len(axes)} axes:")
+        for idx, a in enumerate(axes):
+            print(f"  axes[{idx}] = {a}")
+            print("    children count:", len(a.get_children()))
+            print("    xlim, ylim:", a.get_xlim(), a.get_ylim())
+        # inspect figure children too
+        print("DEBUG: fig.get_children():", fig.get_children()[:5], "… (total", len(fig.get_children()), ")")
         raise
+
     print("DEBUG: fig.axes AFTER beeswarm:", fig.axes)
     imgs["summary"] = _fig_to_b64(fig)
 
