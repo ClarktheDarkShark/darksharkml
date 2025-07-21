@@ -125,4 +125,10 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     )
     imgs["decision"] = _fig_to_b64(fig)
 
+    print("DEBUG: generate_shap_plots returning images:")
+    for name, content in imgs.items():
+        if content is None:
+            print(f"  {name}: None")
+        else:
+            print(f"  {name}: length={len(content)} chars")
     return imgs
