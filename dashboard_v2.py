@@ -290,17 +290,6 @@ TEMPLATE_V2 = '''
 
     </div>
 
-  
-  <!-- Add Plotly.js -->
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-  <script>
-    // Render SHAP plots
-    const summary = JSON.parse('{{ shap_plots.summary | safe }}');
-    const dependence = JSON.parse('{{ shap_plots.dependence | safe }}');
-    
-    Plotly.newPlot('shap-summary', summary.data, summary.layout);
-    Plotly.newPlot('shap-dependence', dependence.data, dependence.layout);
-  </script>
 </body>
 </html>
 '''
