@@ -106,6 +106,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
 
     # Option A: grab just the snippet
     force_html = force_vis.html()
+    imgs["force"] = force_html 
 
     # Global bar plot (mean |SHAP|)
     fig = plt.figure()
