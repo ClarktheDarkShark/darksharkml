@@ -209,7 +209,7 @@ TEMPLATE_V2 = '''
       }
     }
   </script>
-  {{ shap_plots.js | safe }}
+
 </head>
 
 <body>
