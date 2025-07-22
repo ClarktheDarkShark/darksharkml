@@ -75,7 +75,7 @@ TEMPLATE_V2 = '''
       display: grid;
       grid-template-columns: repeat(6, 1fr);
       grid-template-rows: repeat(4, 1fr);
-      gap: 18px 4px;
+      gap: 4px 4px;
       margin-top: 1rem;
       margin-bottom: 1rem;
       max-width: 700px;
