@@ -211,6 +211,8 @@ TEMPLATE_V2 = '''
       }
     }
   </script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  {{ shap_plots.js | safe }}
 </head>
 
 <body>
