@@ -22,6 +22,7 @@ TEMPLATE_V2 = '''
 <!doctype html>
 <html lang="en">
 <head>
+  {{ shap_plots.js | safe }}
   <meta charset="utf-8">
   <meta name="viewport" width="device-width, initial-scale=1">
   <title>Feature Insights Dashboard</title>
