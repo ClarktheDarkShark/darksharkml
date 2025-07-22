@@ -145,7 +145,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     explanation = explainer(X_proc, check_additivity=False)
 
     out: dict[str, str] = {}
-    out["js"] = shap.getjs()
+    
 
     # ── 1. Interactive feature‐importance bar (mean |SHAP|)
     mean_abs = np.abs(explanation.values).mean(axis=0)
