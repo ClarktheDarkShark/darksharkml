@@ -133,6 +133,28 @@ def _fig_to_b64(fig) -> str:
 #             print(f"  {name}: length={len(content)} chars")
 #     return imgs
 
+def df_helper(explanation, feature_names, X_proc):
+    shap_df = pd.DataFrame(explanation.values, columns=feature_names)
+
+    # 1b) Raw feature values → DataFrame
+    raw_df  = pd.DataFrame(X_proc,     columns=feature_names)
+
+    # 1c) Melt both to long form
+    shap_long = shap_df.melt(
+        var_name="feature", 
+        value_name="shap_value"
+    )
+    raw_long = raw_df.melt(
+        var_name="feature", 
+        value_name="feature_value"
+    )
+
+    # 1d) Combine them side by side
+    plot_df = pd.concat(
+        [shap_long, raw_long["feature_value"]], 
+        axis=1
+    )
+    return plot_df
 
 def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict[str, str]:
     X_raw         = df[features]
@@ -156,7 +178,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
         labels={"x": "mean |SHAP value|", "y": "feature"},
         title="Global Feature Importance"
     )
-    out["summary"] = fig.to_html(full_html=False)
+    out["bar"] = fig.to_html(full_html=False)
 
     # ── 2. Interactive dependence plot for top 2 features
     top2 = np.argsort(mean_abs)[-2:]
@@ -199,5 +221,20 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
         out["decision"] = (
             "<p><em>Decision plot rendered inline by SHAP.</em></p>"
         )
+
+    plot_df = df_helper(explanation, feature_names, X_proc)
+    beeswarm_fig = px.strip(
+        plot_df,
+        x="shap_value",
+        y="feature",
+        color="feature_value",
+        stripmode="overlay",    # dots overlap to show density
+        orientation="h",        # feature names on y‐axis
+        title="SHAP Summary (Beeswarm)"
+    )
+    # Optional styling: reduce marker size if you like
+    beeswarm_fig.update_traces(marker=dict(size=6))
+    out["summary"] = beeswarm_fig.to_html(full_html=False)
+
 
     return out
