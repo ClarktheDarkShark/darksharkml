@@ -32,6 +32,7 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, make_scorer
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 from sklearn.compose import TransformedTargetRegressor
+import pytz
 
 from db import db
 from models import DailyStats, TimeSeries  # TimeSeries kept for possible future extension
@@ -353,7 +354,8 @@ def _infer_grid_for_game(
 
     # --- ORIGINAL GRID-BASED INFERENCE ---
     if today_name is None:
-        today_name = datetime.now().strftime("%A")
+        est = pytz.timezone("US/Eastern")
+        today_name = datetime.now(est).strftime("%A")
 
     # determine categories
     if category_options is None:

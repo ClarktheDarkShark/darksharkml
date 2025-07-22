@@ -222,14 +222,15 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
         feature_names=feature_names,
         show=False                # suppress auto‐open tab
     )
+    out["decision"] = dec_fig.to_html(full_html=False)
     # dec_fig will be None when SHAP draws the chart inline (Plotly backend)
-    if dec_fig is not None and hasattr(dec_fig, "to_html"):
-        out["decision"] = dec_fig.to_html(full_html=False)
-    else:
-        # nothing to embed – SHAP already inserted a <script> into the page
-        out["decision"] = (
-            "<p><em>Decision plot rendered inline by SHAP.</em></p>"
-        )
+    # if dec_fig is not None and hasattr(dec_fig, "to_html"):
+    #     out["decision"] = dec_fig.to_html(full_html=False)
+    # else:
+    #     # nothing to embed – SHAP already inserted a <script> into the page
+    #     out["decision"] = (
+    #         "<p><em>Decision plot rendered inline by SHAP.</em></p>"
+    #     )
 
     plot_df = df_helper(explanation, feature_names, X_proc)
     beeswarm_fig = px.strip(
