@@ -171,13 +171,22 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
 
     # ── 1. Interactive feature‐importance bar (mean |SHAP|)
     mean_abs = np.abs(explanation.values).mean(axis=0)
+    df_bar = pd.DataFrame({
+        "feature": feature_names,
+        "mean_abs": mean_abs
+    })
     fig = px.bar(
-        x=mean_abs,
-        y=feature_names,
+        df_bar,
+        x="mean_abs",
+        y="feature",
         orientation="h",
-        labels={"x": "mean |SHAP value|", "y": "feature"},
+        labels={"mean_abs":"mean |SHAP value|","feature":"feature"},
         title="Global Feature Importance"
     )
+
+    # 4. Sort categories so largest mean_abs is at the top
+    fig.update_yaxes(categoryorder="total descending")
+
     out["bar"] = fig.to_html(full_html=False)
 
     # ── 2. Interactive dependence plot for top 2 features
