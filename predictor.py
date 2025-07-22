@@ -293,6 +293,7 @@ def _infer_grid_for_game(
     df_for_inf: pd.DataFrame,
     features: List[str],
     stream_name: str,
+    override_tags: Optional[list[str]] = None,
     start_times: Optional[Iterable[int]] = None,
     durations: Optional[Iterable[int]] = None,
     category_options: Optional[Iterable[str]] = None,
@@ -321,6 +322,11 @@ def _infer_grid_for_game(
     tag_cols = [c for c in features if c.startswith('tag_')]
     # base feature vector
     base = last_row[features].to_frame().T
+
+    if override_tags is not None and not vary_tags:
+        for col in tag_cols:
+            tag = col[len("tag_"):]
+            base[col] = 1 if tag in override_tags else 0
 
     if vary_tags:
         # --- TAG EFFECT EXPERIMENT ---

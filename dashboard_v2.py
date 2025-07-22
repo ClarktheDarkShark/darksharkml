@@ -8,7 +8,8 @@ import pytz
 
 from predictor import (
     get_predictor_artifacts,
-    _infer_grid_for_game  # internal helper; used for dashboard inference
+    _infer_grid_for_game,
+      _get_last_row_for_stream  # internal helper; used for dashboard inference
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -507,13 +508,16 @@ def show_feature_insights():
             columns={'delta_from_baseline': 'delta', 'y_pred': 'subs'}
         ).to_dict('records')
 
+
     # 3) Start time analysis (heatmap)
     # Generate predictions for ALL possible start times
+
     time_predictions = _infer_grid_for_game(
         pipe,
         df_for_inf,
         features,
         stream_name=stream_name,
+        override_tags=top_tags,
         start_times=list(range(24)),  # all 24 hours
         durations=dur_opts,
         category_options=[selected_game],  # use currently selected game
