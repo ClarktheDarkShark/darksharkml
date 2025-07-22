@@ -233,7 +233,6 @@ TEMPLATE_V2 = '''
     </div>
   {% endif %}
 
-  <button type="submit" class="update-btn">Update Prediction</button>
 
   <form id="feature-form" class="feature-select" method="get">
     <div class="feature-group">
@@ -264,6 +263,7 @@ TEMPLATE_V2 = '''
       {% endfor %}
     </div>
     <input type="hidden" name="manual" value="1">
+    <button type="submit" class="update-btn">Update Prediction</button>
   </form>
 
   <!-- 1) Start Time Analysis (Heat Map) -->
