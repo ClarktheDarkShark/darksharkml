@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from shap_utils import generate_shap_plots
+import pytz
 
 from predictor import (
     get_predictor_artifacts,
@@ -208,8 +209,11 @@ TEMPLATE_V2 = '''
       }
     }
   </script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   {{ shap_plots.js | safe }}
 </head>
+
+
 <body>
   <h1>Feature Insights for “thelegendyagami”</h1>
   
@@ -300,11 +304,12 @@ TEMPLATE_V2 = '''
 # ─────────────────────────────────────────────────────────────────────────────
 @dash_v2.route('/v2', methods=['GET'])
 def show_feature_insights():
+    est = pytz.timezone("US/Eastern")
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
 
     stream_name = "thelegendyagami"
-    today_name = "Saturday"
+    today_name = datetime.now(est).strftime("%A") 
 
     # --- Limit games to top 10 by predicted subs + all games played by thelegendyagami ---
     df = df_for_inf.copy()

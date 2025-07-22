@@ -200,4 +200,5 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
             "<p><em>Decision plot rendered inline by SHAP.</em></p>"
         )
 
+    print(out)
     return out
