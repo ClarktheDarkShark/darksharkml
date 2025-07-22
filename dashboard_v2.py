@@ -22,7 +22,6 @@ TEMPLATE_V2 = '''
 <!doctype html>
 <html lang="en">
 <head>
-  {{ shap_plots.js | safe }}
   <meta charset="utf-8">
   <meta name="viewport" width="device-width, initial-scale=1">
   <title>Feature Insights Dashboard</title>
@@ -209,6 +208,7 @@ TEMPLATE_V2 = '''
       }
     }
   </script>
+  {{ shap_plots.js | safe }}
 </head>
 <body>
   <h1>Feature Insights for “thelegendyagami”</h1>
