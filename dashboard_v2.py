@@ -216,6 +216,7 @@ TEMPLATE_V2 = '''
 
 <body>
   <h1>Feature Insights for “thelegendyagami”</h1>
+  <h2 Predictions are for: {{today_name}} </h2>
   
   {% if pred_result %}
     <div class="pred-result">
