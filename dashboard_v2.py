@@ -93,7 +93,7 @@ TEMPLATE_V2 = '''
     }
     .heatcell {
       height: 48px;
-      min-width: 60px;
+      min-width: 120px;
       font-size: 0.95rem;
       border-radius: 6px;
       color: #fff;
