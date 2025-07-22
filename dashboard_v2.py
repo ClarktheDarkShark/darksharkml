@@ -350,36 +350,6 @@ TEMPLATE_V2 = '''
     </div>
   </div>
 
-  <h2>Feature Impact Analysis (SHAP)</h2>
-    <div class="shap-container">
-
-    <div id="shap-summary">
-        <h3>Summary Plot</h3>
-        {{ shap_plots.summary | safe }}
-    </div>
-
-    <div id="shap-dependence">
-        <h3>Dependence Plot</h3>
-        {{ shap_plots.dependence | safe }}
-    </div>
-
-    <div id="shap-bar">
-        <h3>Bar Plot</h3>
-        {{ shap_plots.bar | safe }}
-    </div>
-
-    <div id="shap-decision">
-        <h3>Decision Plot</h3>
-        {{ shap_plots.decision | safe }}
-    </div>
-
-    <div id="shap-force">
-        <h3>Force Plot</h3>
-        {{ shap_plots.force | safe }}
-    </div>
-
-    </div>
-
 </body>
 </html>
 '''
