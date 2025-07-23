@@ -289,8 +289,7 @@ def train_predictor(app, *, log_metrics=True):
         "model":                    model,
         "df_for_inf":               df_inf,
         "features":                 feats,
-        "stream_category_options_inf":
-                                    sorted(df_inf["game_category"].unique().tolist()),
+        "stream_category_options_inf": sorted(df_inf["game_category"].unique().tolist()),
         "stream_duration_opts":     DEFAULT_DURATIONS_HRS,
         "trained_on":               datetime.utcnow(),
         "metrics":                  metrics,
@@ -305,6 +304,10 @@ def train_predictor(app, *, log_metrics=True):
                 .tolist()
     )
     _predictor_state["optional_start_times"] = observed_hours
+
+    print()
+    print('Optional Start Times:')
+    print(_predictor_state["optional_start_times"])
 
     if log_metrics:
         logging.info("Predictor trained: %s", metrics)

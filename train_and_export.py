@@ -8,6 +8,7 @@ if __name__ == "__main__":
     app = create_app()
     # 2) Train once
     train_predictor(app)
+
     # 3) Grab everything out of memory
     pipeline, df_for_inf, features, cat_opts, start_times, dur_opts, metrics = get_predictor_artifacts()
 
@@ -21,5 +22,7 @@ if __name__ == "__main__":
         "stream_duration_opts": dur_opts,
         "metrics": metrics,
     }, "predictor_artifacts.joblib")
+
+    print(start_times)
 
     print("Artifacts saved to predictor_artifacts.joblib")

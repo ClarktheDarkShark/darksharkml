@@ -518,7 +518,7 @@ def show_feature_insights():
         features,
         stream_name=stream_name,
         override_tags=top_tags,
-        start_times=list(range(24)),  # all 24 hours
+        start_times=start_opts,  # all 24 hours
         durations=dur_opts,
         category_options=[selected_game],  # use currently selected game
         top_n=1000,  # get all predictions
