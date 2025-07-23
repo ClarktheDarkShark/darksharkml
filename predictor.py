@@ -273,32 +273,38 @@ def _train_model(df_daily: pd.DataFrame):
 # ─────────────────────────────────────────────────────────────────────────────
 # PUBLIC TRAIN WRAPPER
 # ─────────────────────────────────────────────────────────────────────────────
-def train_predictor(app, *, log_metrics: bool = True):
-    """
-    Explicitly train (on-dyno or offline), updating _predictor_state.
-    """
+def train_predictor(app, *, log_metrics=True):
+    # 1) load
     df_daily = _load_daily_stats_df(app)
+
+    # 2) **add hour + cyclic features**
     add_time_features(df_daily)
 
+    # 3) train on that enriched frame
     model, pipe, df_inf, feats, metrics = _train_model(df_daily)
+
+    # 4) update state (no more DEFAULT_START_TIMES)
     _predictor_state.update({
-        "pipeline":                    pipe,
-        "model":                       model,
-        "df_for_inf":                  df_inf,
-        "features":                    feats,
-        "stream_category_options_inf": sorted(df_inf["game_category"].unique().tolist()),
-        "stream_duration_opts":        DEFAULT_DURATIONS_HRS,
-        "trained_on":                  datetime.utcnow(),
-        "metrics":                     metrics,
+        "pipeline":                 pipe,
+        "model":                    model,
+        "df_for_inf":               df_inf,
+        "features":                 feats,
+        "stream_category_options_inf":
+                                    sorted(df_inf["game_category"].unique().tolist()),
+        "stream_duration_opts":     DEFAULT_DURATIONS_HRS,
+        "trained_on":               datetime.utcnow(),
+        "metrics":                  metrics,
     })
+
+    # 5) capture **only** the hours we actually saw
     observed_hours = sorted(
         df_daily['start_time_hour']
-        .dropna()
-        .astype(int)
-        .unique()
-        .tolist()
+                .dropna()
+                .astype(int)
+                .unique()
+                .tolist()
     )
-    _predictor_state['optional_start_times'] = observed_hours
+    _predictor_state["optional_start_times"] = observed_hours
 
     if log_metrics:
         logging.info("Predictor trained: %s", metrics)
@@ -410,7 +416,7 @@ def _infer_grid_for_game(
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
     for col in ['game_category','start_time_hour','stream_duration']:
         base_rep[col] = grid[col]
-    # add_time_features(base_rep)
+    add_time_features(base_rep)
 
     # predict
     X_inf = base_rep[features]
