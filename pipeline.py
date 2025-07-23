@@ -19,7 +19,7 @@ def _build_pipeline(X: pd.DataFrame):
     bool_cols        = X.select_dtypes(include=['bool']).columns.tolist()
     numeric_cols_all = X.select_dtypes(include=[np.number]).columns.tolist()
     numeric_cols     = [c for c in numeric_cols_all
-                        if c not in bool_cols]          # keep sin/cos here
+                        if c not in bool_cols + ['start_time_hour']]
 
     categorical_cols = [c for c in X.select_dtypes(include=['object','category']).columns
                         if c!='day_of_week']
@@ -29,7 +29,6 @@ def _build_pipeline(X: pd.DataFrame):
     preprocessor = ColumnTransformer(transformers=[
         ('num', MinMaxScaler(), numeric_cols),
         ('bool','passthrough', bool_cols),
-        ('hour',  'passthrough', ['start_time_hour']),
         ('dow', OrdinalEncoder(
                     categories=[ordered_days],
                     dtype=int,
