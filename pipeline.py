@@ -18,7 +18,9 @@ from sklearn.preprocessing import FunctionTransformer
 def _build_pipeline(X: pd.DataFrame):
     bool_cols        = X.select_dtypes(include=['bool']).columns.tolist()
     numeric_cols_all = X.select_dtypes(include=[np.number]).columns.tolist()
-    numeric_cols     = [c for c in numeric_cols_all if c not in bool_cols + ['start_time_hour']]
+    numeric_cols     = [c for c in numeric_cols_all
+                        if c not in bool_cols]          # keep sin/cos here
+
     categorical_cols = [c for c in X.select_dtypes(include=['object','category']).columns
                         if c!='day_of_week']
     tag_cols         = [c for c in X.columns if c.startswith('tag_')]

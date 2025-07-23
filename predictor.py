@@ -102,6 +102,22 @@ def _load_daily_stats_df(app):
     # ensure columns are strings
     df_daily.columns = df_daily.columns.map(str)
 
+    EST = pytz.timezone("US/Eastern")
+    two_pi = 2 * np.pi
+
+    # 1) ensure we can always pull .hour
+    def _get_hour(t):
+        try:
+            return t.hour    # works for datetime.time or Timestamp
+        except AttributeError:
+            return np.nan
+
+    df_daily['start_time_hour'] = df_daily['stream_start_time'].apply(_get_hour).astype(float)
+
+    # 2) cyclic features
+    df_daily['start_hour_sin'] = np.sin(two_pi * df_daily['start_time_hour'] / 24)
+    df_daily['start_hour_cos'] = np.cos(two_pi * df_daily['start_time_hour'] / 24)
+
     # normalize missing or non-list tags to empty list
     # df_daily['tags'] = df_daily['tags'].apply(lambda x: x if isinstance(x, list) else [])
     df_daily['raw_tags'] = df_daily.pop('tags').apply(lambda x: x if isinstance(x, list) else [])
@@ -261,9 +277,9 @@ def train_predictor(app, *, log_metrics: bool = True):
     Explicitly train (on-dyno or offline), updating _predictor_state.
     """
     df_daily = _load_daily_stats_df(app)
-    df_daily['start_time_hour'] = df_daily['stream_start_time'].apply(
-        lambda t: t.hour if pd.notnull(t) else np.nan
-    )
+    # df_daily['start_time_hour'] = df_daily['stream_start_time'].apply(
+    #     lambda t: t.hour if pd.notnull(t) else np.nan
+    # )
 
     model, pipe, df_inf, feats, metrics = _train_model(df_daily)
     _predictor_state.update({
@@ -382,6 +398,9 @@ def _infer_grid_for_game(
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
     for col in ['game_category','start_time_hour','stream_duration']:
         base_rep[col] = grid[col]
+    two_pi = 2 * np.pi
+    base_rep['start_hour_sin'] = np.sin(two_pi * base_rep['start_time_hour'] / 24)
+    base_rep['start_hour_cos'] = np.cos(two_pi * base_rep['start_time_hour'] / 24)
     base_rep["day_of_week"] = today_name
 
     # predict
@@ -427,10 +446,16 @@ def _infer_grid_for_game(
     if start_hour_filter is not None:
         results = results[results['start_time_hour'] == start_hour_filter]
 
-    # sort & dedupe
+    # # sort & dedupe
+    # results = results.sort_values('y_pred', ascending=False)
+    # if unique_scores:
+    #     results = results.drop_duplicates(subset=['y_pred'], keep='first')
+
     results = results.sort_values('y_pred', ascending=False)
-    if unique_scores:
-        results = results.drop_duplicates(subset=['y_pred'], keep='first')
+    results = results.drop_duplicates(
+                subset=['y_pred', 'start_time_hour'],   # keep one row per score‑hour pair
+                keep='first'
+            )
 
     return results.head(top_n).reset_index(drop=True)
 
