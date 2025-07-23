@@ -340,6 +340,7 @@ def _infer_grid_for_game(
     tag_cols = [c for c in features if c.startswith('tag_')]
     # base feature vector
     base = last_row[features].to_frame().T
+    add_time_features(base)
 
     if override_tags is not None and not vary_tags:
         for col in tag_cols:
@@ -395,7 +396,7 @@ def _infer_grid_for_game(
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
     for col in ['game_category','start_time_hour','stream_duration']:
         base_rep[col] = grid[col]
-    add_time_features(base_rep)
+    # add_time_features(base_rep)
 
     # predict
     X_inf = base_rep[features]
