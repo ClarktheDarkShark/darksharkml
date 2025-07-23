@@ -261,6 +261,13 @@ def train_predictor(app, *, log_metrics: bool = True):
     Explicitly train (on-dyno or offline), updating _predictor_state.
     """
     df_daily = _load_daily_stats_df(app)
+    print()
+    df_daily['start_hour'] = df_daily['stream_start_time'].apply(
+        lambda t: t.hour if pd.notnull(t) else np.nan
+    )
+
+
+    print(df_daily['stream_start_time'].tail(20))
     model, pipe, df_inf, feats, metrics = _train_model(df_daily)
     _predictor_state.update({
         "pipeline":                    pipe,
