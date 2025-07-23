@@ -281,6 +281,14 @@ def train_predictor(app, *, log_metrics: bool = True):
     # df_daily['start_time_hour'] = df_daily['stream_start_time'].apply(
     #     lambda t: t.hour if pd.notnull(t) else np.nan
     # )
+    observed_hours = sorted(
+        df_daily['start_time_hour']
+        .dropna()
+        .astype(int)
+        .unique()
+        .tolist()
+    )
+    _predictor_state['optional_start_times'] = observed_hours
 
     model, pipe, df_inf, feats, metrics = _train_model(df_daily)
     _predictor_state.update({
@@ -337,6 +345,9 @@ def _infer_grid_for_game(
     """
     if pipeline is None:
         raise RuntimeError("Predictor pipeline is not trained.")
+
+    if start_times is None:
+        start_times = _predictor_state['optional_start_times']
 
     # 1) get the last-known feature row
     last_row = _get_last_row_for_stream(df_for_inf, stream_name)
