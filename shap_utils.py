@@ -212,22 +212,52 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     )
     out["force"] = force_vis.html()
 
-    # ── 4. Interactive decision plot ────────────────────────────────
-    base      = explainer.expected_value        # scalar
-    shap_vals = explanation.values[:10]         # (#samples × #features)
+    # 4) Decision plot
+    base      = explainer.expected_value
+    shap_vals = explanation.values[:10]
 
     dec_obj = shap.plots.decision(
-        base, 
+        base,
         shap_vals,
         features=X_raw.iloc[:10],
         feature_names=feature_names,
         show=False,
         return_objects=True
     )
-    
-    fig = go.Figure(data=dec_obj.data, layout=dec_obj.layout)
 
-    out["decision"] = fig.to_html(full_html=False)
+    # Build Plotly Figure from DecisionPlotResult
+    order = dec_obj.feature_idx
+    vals  = dec_obj.shap_values[:, order]
+
+    # cumulative sums for each sample
+    cums = []
+    for row in vals:
+        cs = np.concatenate([[dec_obj.base_value], dec_obj.base_value + np.cumsum(row)])
+        cums.append(cs)
+    cums = np.vstack(cums)
+
+    fig_dec = go.Figure()
+    for row in cums:
+        fig_dec.add_trace(go.Scatter(
+            x=row,
+            y=np.arange(len(row)),
+            mode="lines",
+            line=dict(width=1),
+            showlegend=False
+        ))
+
+    fig_dec.update_layout(
+        title="Decision Plot",
+        xaxis=dict(range=dec_obj.xlim),
+        yaxis=dict(
+            tickmode="array",
+            tickvals=np.arange(1, len(order)+1),
+            ticktext=[feature_names[i] for i in order],
+            autorange="reversed"
+        ),
+        margin=dict(l=200, r=20, t=50, b=20)
+    )
+    out["decision"] = fig_dec.to_html(full_html=False)
 
     plot_df = df_helper(explanation, feature_names, X_proc)
     beeswarm_fig = px.strip(
