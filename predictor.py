@@ -91,6 +91,18 @@ if os.path.exists(_ARTIFACT_PATH):
 else:
     logging.info("No predictor_artifacts.joblib found; on‐dyno training available when called.")
 
+two_pi = 2 * np.pi
+EST = pytz.timezone("US/Eastern")
+
+def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Adds start_time_hour, and its cyclic sin/cos, in‑place."""
+    if 'start_time_hour' not in df.columns:
+        df['start_time_hour'] = df['stream_start_time'].apply(lambda t: t.hour)
+
+    df['start_hour_sin'] = np.sin(two_pi * df['start_time_hour'] / 24)
+    df['start_hour_cos'] = np.cos(two_pi * df['start_time_hour'] / 24)
+    return df
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA LOADING
 # ─────────────────────────────────────────────────────────────────────────────
@@ -101,22 +113,7 @@ def _load_daily_stats_df(app):
         df_daily = pd.read_sql_table(DailyStats.__tablename__, con=db.engine)
     # ensure columns are strings
     df_daily.columns = df_daily.columns.map(str)
-
-    EST = pytz.timezone("US/Eastern")
-    two_pi = 2 * np.pi
-
-    # 1) ensure we can always pull .hour
-    def _get_hour(t):
-        try:
-            return t.hour    # works for datetime.time or Timestamp
-        except AttributeError:
-            return np.nan
-
-    df_daily['start_time_hour'] = df_daily['stream_start_time'].apply(_get_hour).astype(float)
-
-    # 2) cyclic features
-    df_daily['start_hour_sin'] = np.sin(two_pi * df_daily['start_time_hour'] / 24)
-    df_daily['start_hour_cos'] = np.cos(two_pi * df_daily['start_time_hour'] / 24)
+    add_time_features(df_daily)
 
     # normalize missing or non-list tags to empty list
     # df_daily['tags'] = df_daily['tags'].apply(lambda x: x if isinstance(x, list) else [])
@@ -398,10 +395,7 @@ def _infer_grid_for_game(
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
     for col in ['game_category','start_time_hour','stream_duration']:
         base_rep[col] = grid[col]
-    two_pi = 2 * np.pi
-    base_rep['start_hour_sin'] = np.sin(two_pi * base_rep['start_time_hour'] / 24)
-    base_rep['start_hour_cos'] = np.cos(two_pi * base_rep['start_time_hour'] / 24)
-    base_rep["day_of_week"] = today_name
+    add_time_features(base_rep)
 
     # predict
     X_inf = base_rep[features]
