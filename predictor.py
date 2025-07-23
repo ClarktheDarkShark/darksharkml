@@ -190,6 +190,27 @@ def _train_model(df_daily: pd.DataFrame):
     # print(X_train.nunique())
 
     pipeline, mod = _build_pipeline(X_train)
+
+
+    # ── DEBUG: inspect the preprocessor output ────────────────────────────
+    pre = pipeline.named_steps['pre']
+
+    # tell it to produce a DataFrame with column names (sklearn ≥1.2)
+    pre.set_output(transform="pandas")
+
+    # fit & transform on the training set
+    X_debug = pre.fit_transform(X_train)
+
+    # print a sample and the feature names
+    with pd.option_context('display.max_rows', None):
+        print("\n>>> [DEBUG] Transformed features (row 0, transposed):")
+        print(X_debug.tail(5).T.round(4))
+
+    # revert to default (so GridSearchCV still sees an ndarray)
+    pre.set_output(transform="default")
+
+
+
     
     tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
 

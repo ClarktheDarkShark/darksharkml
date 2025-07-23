@@ -364,6 +364,7 @@ def show_feature_insights():
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
 
+
     stream_name = "thelegendyagami"
     today_name = datetime.now(est).strftime("%A") 
 
@@ -449,6 +450,28 @@ def show_feature_insights():
 
     # Generate predictions for each row in df_for_inf
     df['y_pred'] = pipe.predict(df[features]) if ready else 0
+
+
+
+    # ── DEBUG: inspect the preprocessor output ────────────────────────────
+    pre = pipe.named_steps['pre']
+
+    # tell it to produce a DataFrame with column names (sklearn ≥1.2)
+    pre.set_output(transform="pandas")
+
+    # fit & transform on the training set
+    X_debug = pre.fit_transform(df[features])
+
+    # print a sample and the feature names
+    with pd.option_context('display.max_rows', None):
+        print("\n>>> [DEBUG] Transformed features (row 0, transposed):")
+        print(X_debug.tail(5).T.round(4))
+
+    # revert to default (so GridSearchCV still sees an ndarray)
+    pre.set_output(transform="default")
+
+
+
     # Confidence: 1/(1+std) across trees if available
     try:
         pre = pipe.named_steps['pre']
