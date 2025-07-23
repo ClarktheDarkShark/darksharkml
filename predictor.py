@@ -118,6 +118,7 @@ def _load_daily_stats_df(app):
     df_daily.columns = df_daily.columns.map(str)
     add_time_features(df_daily)
 
+
     # normalize missing or non-list tags to empty list
     # df_daily['tags'] = df_daily['tags'].apply(lambda x: x if isinstance(x, list) else [])
     df_daily['raw_tags'] = df_daily.pop('tags').apply(lambda x: x if isinstance(x, list) else [])
@@ -182,8 +183,8 @@ def _train_model(df_daily: pd.DataFrame):
 
     print()
     # print(X_train)
-    print('Train sample size:',X_train.shape)
-    print('Test sample size:',X_test.shape)
+    print('Train sample size:',X_train['start_time_hour'].tail())
+    print('Test sample size:',X_test['start_time_hour'].tail())
     print()
     # print(y_train.describe())
     # print(X_train.nunique())
