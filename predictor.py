@@ -261,7 +261,7 @@ def train_predictor(app, *, log_metrics: bool = True):
     Explicitly train (on-dyno or offline), updating _predictor_state.
     """
     df_daily = _load_daily_stats_df(app)
-    df_daily['start_hour'] = df_daily['stream_start_time'].apply(
+    df_daily['start_time_hour'] = df_daily['stream_start_time'].apply(
         lambda t: t.hour if pd.notnull(t) else np.nan
     )
 
@@ -376,11 +376,11 @@ def _infer_grid_for_game(
 
     # build grid of (game, hour, duration)
     combos = list(itertools.product(category_options, start_times, durations))
-    grid = pd.DataFrame(combos, columns=['game_category','stream_start_time','stream_duration'])
+    grid = pd.DataFrame(combos, columns=['game_category','start_time_hour','stream_duration'])
 
     # replicate base row and overwrite dynamic cols
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
-    for col in ['game_category','stream_start_time','stream_duration']:
+    for col in ['game_category','start_time_hour','stream_duration']:
         base_rep[col] = grid[col]
     base_rep["day_of_week"] = today_name
 
@@ -425,7 +425,7 @@ def _infer_grid_for_game(
         results = results[results['game_category'] == game_cat]
 
     if start_hour_filter is not None:
-        results = results[results['stream_start_time'] == start_hour_filter]
+        results = results[results['start_time_hour'] == start_hour_filter]
 
     # sort & dedupe
     results = results.sort_values('y_pred', ascending=False)
