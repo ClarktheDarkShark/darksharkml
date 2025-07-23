@@ -278,17 +278,7 @@ def train_predictor(app, *, log_metrics: bool = True):
     Explicitly train (on-dyno or offline), updating _predictor_state.
     """
     df_daily = _load_daily_stats_df(app)
-    # df_daily['start_time_hour'] = df_daily['stream_start_time'].apply(
-    #     lambda t: t.hour if pd.notnull(t) else np.nan
-    # )
-    observed_hours = sorted(
-        df_daily['start_time_hour']
-        .dropna()
-        .astype(int)
-        .unique()
-        .tolist()
-    )
-    _predictor_state['optional_start_times'] = observed_hours
+    add_time_features(df_daily)
 
     model, pipe, df_inf, feats, metrics = _train_model(df_daily)
     _predictor_state.update({
@@ -297,11 +287,18 @@ def train_predictor(app, *, log_metrics: bool = True):
         "df_for_inf":                  df_inf,
         "features":                    feats,
         "stream_category_options_inf": sorted(df_inf["game_category"].unique().tolist()),
-        "optional_start_times":        DEFAULT_START_TIMES,
         "stream_duration_opts":        DEFAULT_DURATIONS_HRS,
         "trained_on":                  datetime.utcnow(),
         "metrics":                     metrics,
     })
+    observed_hours = sorted(
+        df_daily['start_time_hour']
+        .dropna()
+        .astype(int)
+        .unique()
+        .tolist()
+    )
+    _predictor_state['optional_start_times'] = observed_hours
 
     if log_metrics:
         logging.info("Predictor trained: %s", metrics)
