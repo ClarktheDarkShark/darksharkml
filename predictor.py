@@ -346,8 +346,6 @@ def _infer_grid_for_game(
     if pipeline is None:
         raise RuntimeError("Predictor pipeline is not trained.")
 
-    if start_times is None:
-        start_times = _predictor_state['optional_start_times']
 
     # 1) get the last-known feature row
     last_row = _get_last_row_for_stream(df_for_inf, stream_name)
@@ -398,8 +396,12 @@ def _infer_grid_for_game(
         category_options = list(category_options)
         restrict_to_stream_game = False
 
+    print()
+    print(start_times)
     if start_times is None:
-        start_times = DEFAULT_START_TIMES
+        start_times = _predictor_state['optional_start_times']
+        print()
+        print(start_times)
     if durations is None:
         durations = DEFAULT_DURATIONS_HRS
 
