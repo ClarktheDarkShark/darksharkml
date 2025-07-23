@@ -21,6 +21,7 @@ import shap
 import matplotlib.pyplot as plt
 import io, base64
 import plotly.express as px
+import plotly.graph_objects as go
 
 
 # ── tiny helper to turn figures into base-64 PNGs ──────────────────────────
@@ -224,14 +225,9 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
         return_objects=True
     )
     
-    # dec_fig will be None when SHAP draws the chart inline (Plotly backend)
-    if dec_fig is not None and hasattr(dec_fig, "to_html"):
-        out["decision"] = dec_fig.to_html(full_html=False)
-    else:
-        # nothing to embed – SHAP already inserted a <script> into the page
-        out["decision"] = (
-            "<p><em>Decision plot rendered inline by SHAP.</em></p>"
-        )
+    fig = go.Figure(data=dec_obj.data, layout=dec_obj.layout)
+
+    out["decision"] = fig.to_html(full_html=False)
 
     plot_df = df_helper(explanation, feature_names, X_proc)
     beeswarm_fig = px.strip(
