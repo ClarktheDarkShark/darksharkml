@@ -151,7 +151,7 @@ def _train_model(df_daily: pd.DataFrame):
     y = df_clean['total_subscriptions']
     # y = df_clean['net_follower_change']
     X = df_clean[feats]
-    cutoff = df_clean["stream_date"].quantile(0.9)
+    cutoff = df_clean["stream_date"].quantile(0.8)
     train_mask = df_clean["stream_date"] < cutoff
     X_train, X_test = X[train_mask], X[~train_mask]
     y_train, y_test = y[train_mask], y[~train_mask]
@@ -376,11 +376,11 @@ def _infer_grid_for_game(
 
     # build grid of (game, hour, duration)
     combos = list(itertools.product(category_options, start_times, durations))
-    grid = pd.DataFrame(combos, columns=['game_category','start_time_hour','stream_duration'])
+    grid = pd.DataFrame(combos, columns=['game_category','stream_start_time','stream_duration'])
 
     # replicate base row and overwrite dynamic cols
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
-    for col in ['game_category','start_time_hour','stream_duration']:
+    for col in ['game_category','stream_start_time','stream_duration']:
         base_rep[col] = grid[col]
     base_rep["day_of_week"] = today_name
 
@@ -425,7 +425,7 @@ def _infer_grid_for_game(
         results = results[results['game_category'] == game_cat]
 
     if start_hour_filter is not None:
-        results = results[results['start_time_hour'] == start_hour_filter]
+        results = results[results['stream_start_time'] == start_hour_filter]
 
     # sort & dedupe
     results = results.sort_values('y_pred', ascending=False)
