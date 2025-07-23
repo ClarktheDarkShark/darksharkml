@@ -91,17 +91,20 @@ if os.path.exists(_ARTIFACT_PATH):
 else:
     logging.info("No predictor_artifacts.joblib found; on‐dyno training available when called.")
 
-two_pi = 2 * np.pi
+_TWO_PI = 2 * np.pi
 EST = pytz.timezone("US/Eastern")
 
-def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Adds start_time_hour, and its cyclic sin/cos, in‑place."""
+def add_time_features(df: pd.DataFrame) -> None:
+    # 1) Ensure the hour column exists
     if 'start_time_hour' not in df.columns:
         df['start_time_hour'] = df['stream_start_time'].apply(lambda t: t.hour)
 
-    df['start_hour_sin'] = np.sin(two_pi * df['start_time_hour'] / 24)
-    df['start_hour_cos'] = np.cos(two_pi * df['start_time_hour'] / 24)
-    return df
+    # 2) **Cast to numeric** so we don’t end up with object‑dtype
+    df['start_time_hour'] = pd.to_numeric(df['start_time_hour'], errors='coerce')
+
+    # 3) Now compute the cyclic features
+    df['start_hour_sin'] = np.sin(_TWO_PI * df['start_time_hour'] / 24)
+    df['start_hour_cos'] = np.cos(_TWO_PI * df['start_time_hour'] / 24)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA LOADING
