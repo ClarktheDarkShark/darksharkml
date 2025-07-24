@@ -256,10 +256,19 @@ TEMPLATE_V2 = '''
     </div>
     <div class="feature-group">
       <span class="feature-label">Tags:</span>
-      {% for t in tag_opts %}
+      {% for t in all_tags %}
         <label>
-          <input type="checkbox" name="tags" id="input_tags_{{t}}" value="{{t}}" {% if t in selected_tags %}checked{% endif %} style="display:none;">
-          <button type="button" class="feature-btn tag-btn {% if t in selected_tags %}selected{% endif %}" onclick="selectFeature('tags','{{t}}',true)">{{t}}</button>
+          <input type="checkbox"
+                 name="tags"
+                 id="input_tags_{{t}}"
+                 value="{{t}}"
+                 {% if t in selected_tags %}checked{% endif %}
+                 style="display:none;">
+          <button type="button"
+                  class="feature-btn tag-btn {% if t in selected_tags %}selected{% endif %}"
+                  onclick="selectFeature('tags','{{t}}',true)">
+            {{ t }}
+          </button>
         </label>
       {% endfor %}
     </div>
