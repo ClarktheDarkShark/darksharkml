@@ -119,34 +119,8 @@ def _load_daily_stats_df(app):
     add_time_features(df_daily)
 
 
-    # normalize missing or non-list tags to empty list
-    # df_daily['tags'] = df_daily['tags'].apply(lambda x: x if isinstance(x, list) else [])
-    df_daily['raw_tags'] = df_daily.pop('tags').apply(lambda x: x if isinstance(x, list) else [])
-
-
-    # explode to one tag per row, get dummies, then sum back into one row per original index
-    df_tags = (
-        df_daily['raw_tags']
-        .explode()                       # one row per tag
-        .str.get_dummies()               # one-hot encode
-        .groupby(level=0)                # group back by original row index
-        .sum()                           # 1 if tag was present, else 0
-        .add_prefix('tag_')
-    )
-
-    df_daily = pd.concat([df_daily, df_tags], axis=1)
-    # if you no longer need the list version:
+    df_daily['raw_tags'] = df_daily['tags'].apply(lambda x: x if isinstance(x, list) else [])
     
-
-    # 4) Lowercase game_category, etc.
-    df_daily['game_category'] = df_daily['game_category'].str.lower()
-
-    # DEBUG: confirm
-    print("raw_tags sample:", df_daily['raw_tags'].head())
-    df_daily.drop(columns=['raw_tags'], inplace=True)
-    print("dummy‐tag columns:", [c for c in df_daily.columns if c.startswith('tag_')])
-
-
     # lowercase your game_category as before
     df_daily['game_category'] = df_daily['game_category'].str.lower()
 

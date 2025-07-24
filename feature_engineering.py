@@ -11,17 +11,44 @@ ROLL_N = 5
 # FEATURE ENGINEERING
 # ─────────────────────────────────────────────────────────────────────────────
 def _drop_unused_columns(df_daily: pd.DataFrame) -> pd.DataFrame:
-    df_daily['min_sentiment_score'].fillna(df_daily['avg_sentiment_score'], inplace=True)
-    df_daily['max_sentiment_score'].fillna(df_daily['avg_sentiment_score'], inplace=True)
-    to_drop = df_daily.columns[
-        df_daily.isnull().all() |
-        (df_daily.nunique(dropna=False) == 1)
-    ].union([
-        'created_at','new_subscriptions_t1','resubscriptions','title_length',
-        'subs_per_avg_viewer','subs_7d_moving_avg','subs_3d_moving_avg',
-        'day_over_day_peak_change','followers_start','followers_end',
-    ])
-    logging.debug("Dropping columns: %s", list(to_drop))
+    """
+    Fill missing sentiment scores and drop columns that are entirely null,
+    constant (nunique ≤ 1), or explicitly excluded. Any column that raises
+    an error during .nunique() (e.g. list‑valued) is simply left in place.
+    """
+    # 1) Fill missing sentiment scores
+    df_daily['min_sentiment_score'] = (
+        df_daily['min_sentiment_score']
+        .fillna(df_daily['avg_sentiment_score'])
+    )
+    df_daily['max_sentiment_score'] = (
+        df_daily['max_sentiment_score']
+        .fillna(df_daily['avg_sentiment_score'])
+    )
+
+    # 2) Identify columns to drop
+    drop_cols = []
+    for col in df_daily.columns:
+        try:
+            all_null   = df_daily[col].isnull().all()
+            is_constant = df_daily[col].nunique(dropna=False) <= 1
+        except (TypeError, ValueError):
+            # Skip unhashable or problematic columns
+            continue
+        if all_null or is_constant:
+            drop_cols.append(col)
+
+    # 3) Add explicit exclusions
+    explicit = [
+        'created_at', 'new_subscriptions_t1', 'resubscriptions', 'title_length',
+        'subs_per_avg_viewer', 'subs_7d_moving_avg', 'subs_3d_moving_avg',
+        'day_over_day_peak_change', 'followers_start', 'followers_end',
+    ]
+    drop_cols += explicit
+
+    # 4) Deduplicate and drop
+    to_drop = list(dict.fromkeys(drop_cols))
+    logging.debug("Dropping columns: %s", to_drop)
     return df_daily.drop(columns=to_drop, errors="ignore")
 
 def _round_to_nearest_hour(t) -> int:
@@ -96,7 +123,14 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
         'day_of_week','start_time_hour','is_weekend',
         'days_since_previous_stream','game_category','stream_duration'
     ]
+
     features = base_feats + hist_cols
+    
+    if 'raw_tags' in df.columns:
+        features = base_feats + hist_cols + ['raw_tags']
+    else:
+        features = base_feats + hist_cols
+
     df['game_category'] = df['game_category'].str.lower()
 
     return df, features, hist_cols
