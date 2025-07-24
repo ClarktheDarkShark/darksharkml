@@ -185,12 +185,26 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
 
     # 2) feature names — new tag pipeline may not implement get_feature_names_out
     try:
-        feature_names = pipeline[:-1].get_feature_names_out(features)
+        # the “official” way; will work if every sub‐transformer implements get_feature_names_out
+        feature_names = pre.get_feature_names_out(features)
     except Exception:
-        print('HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH')
-        print()
-        print('HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH')
-        feature_names = pipeline[:-1].get_feature_names_out()
+        # manual fallback: pull names out of each transformer in order
+        feature_names = []
+        for name, trans, cols in pre.transformers_:
+            if name == "num":
+                # numeric columns come through as-is
+                feature_names.extend(cols)
+            elif name == "tags":
+                # tag_pipeline = Pipeline([…, ('svd', TruncatedSVD(n_components=N))])
+                n_comp = trans.named_steps["svd"].n_components
+                feature_names.extend([f"tags__svd_{i}" for i in range(n_comp)])
+            elif name == "bool":
+                feature_names.extend(cols)
+            elif name == "dow":
+                feature_names.extend(cols)        # day_of_week encoded as integer
+            elif name == "cat":
+                feature_names.extend(cols)        # other categorical cols
+            # remainder is 'drop', so nothing else to add
 
     # 3) unwrap regressor if it’s inside a TransformedTargetRegressor
     reg = pipeline.named_steps["reg"]
