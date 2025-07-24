@@ -124,7 +124,7 @@ def _load_daily_stats_df(app):
     # lowercase your game_category as before
     df_daily['game_category'] = df_daily['game_category'].str.lower()
 
-    print(df_daily)
+    # print(df_daily)
     return df_daily
 
 
@@ -232,7 +232,7 @@ def _train_model(df_daily: pd.DataFrame):
     df_for_inf = df_clean[['stream_name'] + feats].copy()
 
     preds = model.predict(X_test)
-    print(preds)
+    # print(preds)
     return model, model.best_estimator_, df_for_inf, feats, metrics
 
 
