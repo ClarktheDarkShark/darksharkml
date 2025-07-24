@@ -24,6 +24,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.compose import TransformedTargetRegressor
 
+from pipeline import join_raw_tags
+
 
 # ── tiny helper to turn figures into base-64 PNGs ──────────────────────────
 def _fig_to_b64(fig) -> str:
