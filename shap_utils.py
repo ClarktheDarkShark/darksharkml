@@ -160,54 +160,46 @@ def df_helper(explanation, feature_names, X_proc):
 
 def generate_shap_plots(pipeline, X, features):
     """
-    Given a fitted pipeline and raw feature matrix X (before transformation),
-    computes SHAP values and returns a dict of HTML/js blobs for summary,
-    dependence, bar and decision plots.
+    Given a fitted pipeline and the raw feature matrix X (before transformation),
+    compute SHAP values and return a dict of HTML/js blobs for the main plots.
     """
     import shap
+    from sklearn.compose import TransformedTargetRegressor
 
-    # 1) pull off the “pre” step and turn it into a one‑step pipeline so we
-    #    can ask it for its output feature names
-    pre = pipeline.named_steps['pre']
-    # instead of calling pre.get_feature_names_out (which can mis‑dispatch),
-    # do this:
+    # 1) Transform X into the model’s input space first
+    X_trans = pipeline[:-1].transform(X)
+
+    # 2) Try to recover meaningful feature names; fall back to f0, f1, …
     try:
         feature_names = pipeline[:-1].get_feature_names_out(features)
     except Exception:
         feature_names = [f"f{i}" for i in range(X_trans.shape[1])]
 
-    # 2) transform X to the model’s input space
-    #    (we leave the regressor step on the full pipeline, but just use
-    #     pipeline[:-1] here)
-    X_trans = pipeline[:-1].transform(X)
-
-    # 3) fit a SHAP explainer on the *model* (last step), but pass the
-    #    transformed data
-    model = pipeline.named_steps['reg']
+    # 3) Build a SHAP explainer for the underlying regressor
+    model = pipeline.named_steps["reg"]
     if isinstance(model, TransformedTargetRegressor):
-        wrapped = model.regressor_
-    else:
-        wrapped = model
-    explainer = shap.TreeExplainer(wrapped, feature_perturbation="interventional")
+        model = model.regressor_
+    explainer   = shap.TreeExplainer(model, feature_perturbation="interventional")
     shap_values = explainer.shap_values(X_trans)
 
-    # 4) build each plot, capturing its HTML fragment
-    out = {}
-    out["summary"] = shap.plots.beeswarm(shap_values, X_trans,
+    # 4) Render plots and return the HTML fragments
+    out = {
+        "summary":   shap.plots.beeswarm(shap_values, X_trans,
                                          feature_names=feature_names,
-                                         show=False, plot_size=(10,6)).html()
-    out["dependence"] = shap.plots.scatter(shap_values, X_trans,
-                                           feature_names=feature_names,
-                                           show=False).html()
-    out["bar"] = shap.plots.bar(shap_values, X_trans,
-                                feature_names=feature_names,
-                                show=False).html()
-    out["decision"] = shap.plots.decision_plot(explainer.expected_value,
-                                               shap_values, X_trans,
-                                               feature_names=feature_names,
-                                               show=False).html()
-    out["force"] = shap.force_plot(explainer.expected_value,
-                                   shap_values, X_trans,
-                                   feature_names=feature_names,
-                                   matplotlib=False).html()
+                                         show=False, plot_size=(10, 6)).html(),
+        "dependence": shap.plots.scatter(shap_values, X_trans,
+                                         feature_names=feature_names,
+                                         show=False).html(),
+        "bar":       shap.plots.bar(shap_values, X_trans,
+                                    feature_names=feature_names,
+                                    show=False).html(),
+        "decision":  shap.plots.decision_plot(explainer.expected_value,
+                                              shap_values, X_trans,
+                                              feature_names=feature_names,
+                                              show=False).html(),
+        "force":     shap.force_plot(explainer.expected_value,
+                                     shap_values, X_trans,
+                                     feature_names=feature_names,
+                                     matplotlib=False).html(),
+    }
     return out
