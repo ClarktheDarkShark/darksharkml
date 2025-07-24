@@ -170,6 +170,8 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     out: dict[str, str] = {}
     out["js"] = shap.getjs()
 
+
+    plot_df = df_helper(explanation, feature_names, X_proc)
     # ── 1. Interactive feature‐importance bar (mean |SHAP|)
     mean_abs = np.abs(explanation.values).mean(axis=0)
     # 1) Compute mean(|SHAP|) per feature
@@ -277,7 +279,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
 
 
 
-    plot_df = df_helper(explanation, feature_names, X_proc)
+    
     plot_df_filt = plot_df[plot_df['feature'].isin(top_feats)]
     beeswarm_fig = px.strip(
         plot_df_filt,
