@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import io, base64
 import plotly.express as px
 import plotly.graph_objects as go
+from sklearn.compose import TransformedTargetRegressor
 
 
 # ── tiny helper to turn figures into base-64 PNGs ──────────────────────────
