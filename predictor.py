@@ -331,18 +331,24 @@ def _infer_grid_for_game(
 
     # ————————————— TAG EFFECT EXPERIMENT (vary_tags) —————————————
     if vary_tags:
+        # collect your tag_* columns
+        tag_cols = [c for c in features if c.startswith('tag_')]
+
+        # if there are no one‑hot tag columns, just return an empty frame
+        if not tag_cols:
+            return pd.DataFrame(columns=['tag','y_pred','delta_from_baseline'])
+
         # baseline prediction
         y_base = pipeline.predict(base)[0]
         records = []
 
-        # for each one-hot tag_* column, flip it and measure the delta
+        # for each one‑hot tag column, flip it and measure the delta
         for col in tag_cols:
             mod = base.copy()
-            # flip 0→1 or 1→0
-            mod[col] = 1 - mod[col].iloc[0]
-            y_mod = pipeline.predict(mod)[0]
+            mod[col] = 1 - mod[col].iloc[0]       # flip 0→1 or 1→0
+            y_mod   = pipeline.predict(mod)[0]
             records.append({
-                'tag': col[len('tag_'):],               # strip prefix
+                'tag': col[len('tag_'):],         # strip prefix
                 'y_pred': y_mod,
                 'delta_from_baseline': y_mod - y_base
             })
