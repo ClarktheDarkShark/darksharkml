@@ -364,6 +364,13 @@ def show_feature_insights():
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
 
+    all_tags: list[str] = []
+    if ready:
+        pre = pipe.named_steps["pre"]
+        tag_pipe = pre.named_transformers_["tags"]
+        vectorizer = tag_pipe.named_steps["vectorize"]
+        all_tags = vectorizer.get_feature_names_out().tolist()
+
     stream_name = "thelegendyagami"
     today_name = datetime.now(est).strftime("%A") 
 
@@ -592,5 +599,6 @@ def show_feature_insights():
         game_insights=game_insights,
         tag_insights=tag_insights,
         heatmap_cells=heatmap_cells,
+        all_tags=all_tags,
         shap_plots=shap_plots
     )
