@@ -94,39 +94,17 @@ else:
 _TWO_PI = 2 * np.pi
 EST = pytz.timezone("US/Eastern")
 
-# predictor.py  ──────────────────────────────────────────────────────────
 def add_time_features(df: pd.DataFrame) -> None:
-    """
-    Ensure start_time_hour, start_hour_sin, start_hour_cos exist.
+    # 1) Ensure the hour column exists
+    if 'start_time_hour' not in df.columns:
+        df['start_time_hour'] = df['stream_start_time'].apply(lambda t: t.hour)
 
-    Works when we have either:
-      • stream_start_time  (datetime64 or Timestamp)
-      • start_time_hour    (integer 0‑23 already present)
-    """
-    # ------------------------------------------------------------------
-    # 1) start_time_hour
-    # ------------------------------------------------------------------
-    if "start_time_hour" not in df.columns:
-        if "stream_start_time" in df.columns:
-            df["start_time_hour"] = pd.to_datetime(
-                df["stream_start_time"]
-            ).dt.hour
-        else:
-            raise KeyError(
-                "add_time_features: need 'stream_start_time' or "
-                "'start_time_hour' column"
-            )
+    # 2) **Cast to numeric** so we don’t end up with object‑dtype
+    df['start_time_hour'] = pd.to_numeric(df['start_time_hour'], errors='coerce')
 
-    # make sure it’s numeric for downstream scalers
-    df["start_time_hour"] = pd.to_numeric(df["start_time_hour"], errors="coerce")
-
-    # ------------------------------------------------------------------
-    # 2) cyclic encoding (create only if missing)
-    # ------------------------------------------------------------------
-    if "start_hour_sin" not in df.columns or "start_hour_cos" not in df.columns:
-        df["start_hour_sin"] = np.sin(_TWO_PI * df["start_time_hour"] / 24)
-        df["start_hour_cos"] = np.cos(_TWO_PI * df["start_time_hour"] / 24)
-
+    # 3) Now compute the cyclic features
+    df['start_hour_sin'] = np.sin(_TWO_PI * df['start_time_hour'] / 24)
+    df['start_hour_cos'] = np.cos(_TWO_PI * df['start_time_hour'] / 24)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA LOADING
