@@ -187,7 +187,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     try:
         feature_names = pipeline[:-1].get_feature_names_out(features)
     except Exception:
-        feature_names = [f"f{i}" for i in range(X_proc.shape[1])]
+        feature_names = pipeline[:-1].get_feature_names_out()
 
     # 3) unwrap regressor if it’s inside a TransformedTargetRegressor
     reg = pipeline.named_steps["reg"]
