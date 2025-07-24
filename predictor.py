@@ -423,6 +423,7 @@ def _infer_grid_for_game(
     # pull tags back out of the pipeline’s encoded features
     # by re-using raw_tags column
     results["tags"] = base_rep["raw_tags"]
+    results["start_time_hour"] = base_rep["start_time_hour"].values
 
     # optionally restrict to the stream’s own game category
     if restrict_to_stream_game:
