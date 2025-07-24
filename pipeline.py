@@ -39,39 +39,6 @@ def _build_pipeline(X: pd.DataFrame):
          categorical_cols),
     ], remainder='passthrough')
 
-
-# def _build_pipeline(X: pd.DataFrame):
-#     # 1) figure out your feature groups
-#     bool_cols        = X.select_dtypes(include=['bool']).columns.tolist()
-#     numeric_cols_all = X.select_dtypes(include=[np.number]).columns.tolist()
-#     # drop the raw hour so it's never seen by the pipeline
-#     numeric_cols     = [c for c in numeric_cols_all
-#                         if c not in bool_cols + ['start_time_hour']]
-
-#     categorical_cols = [
-#         c for c in X.select_dtypes(include=['object','category']).columns
-#         if c != 'day_of_week'
-#     ]
-#     tag_cols = [c for c in X.columns if c.startswith('tag_')]
-
-#     # 2) build your ColumnTransformer, explicitly listing every column you want
-#     preprocessor = ColumnTransformer(transformers=[
-#         # scale all numeric (includes start_hour_sin & start_hour_cos)
-#         ('num',   MinMaxScaler(), numeric_cols),
-#         ('bool',  'passthrough', bool_cols),
-#         ('dow', OrdinalEncoder(
-#                     categories=[[
-#                         'Monday','Tuesday','Wednesday',
-#                         'Thursday','Friday','Saturday','Sunday'
-#                     ]], dtype=int, handle_unknown='use_encoded_value', unknown_value=-1),['day_of_week']),
-#         ('cat',   OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1),
-#          categorical_cols),
-
-#         # keep your tag_* columns
-#         ('tags',  'passthrough', tag_cols),
-#     ],
-#     remainder='drop'   # <-- everything else (including start_time_hour) is dropped
-#     )
     # ─────────────────────────────────────────────────────────────────────────────
     # MODELS
     # ─────────────────────────────────────────────────────────────────────────────

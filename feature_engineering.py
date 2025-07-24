@@ -2,6 +2,7 @@ import logging
 
 import numpy as np
 import pandas as pd
+from typing import Optional, List
 # import matplotlib.pyplot as plt
 
 ROLL_N = 5
@@ -99,3 +100,52 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
     df['game_category'] = df['game_category'].str.lower()
 
     return df, features, hist_cols
+
+
+# feature_engineering.py
+
+import numpy as np
+import pandas as pd
+
+def drop_outliers(
+    df: pd.DataFrame,
+    cols: Optional[List[str]] = None,
+    method: str = 'iqr',
+    factor: float = 1.5
+) -> pd.DataFrame:
+    """
+    Returns a copy of df with outlier rows removed.
+    
+    Args:
+      df: original DataFrame.
+      cols: list of numeric columns to test. If None, uses all numeric dtype columns.
+      method: 'iqr' or 'zscore'.
+      factor:
+        - for 'iqr': multiply IQR by this factor to set the bounds (default 1.5)
+        - for 'zscore': drop rows where abs(z) > factor (so factor=3 drops >3σ)
+    """
+    df = df.copy()
+    if cols is None:
+        cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    else:
+        cols = [c for c in cols if c in df.columns]
+
+    if method == 'iqr':
+        Q1 = df[cols].quantile(0.25)
+        Q3 = df[cols].quantile(0.75)
+        IQR = Q3 - Q1
+        lower = Q1 - factor * IQR
+        upper = Q3 + factor * IQR
+        # keep rows where for ALL cols: lower <= val <= upper
+        mask = ~((df[cols] < lower) | (df[cols] > upper)).any(axis=1)
+
+    elif method == 'zscore':
+        # note: requires scipy
+        from scipy.stats import zscore
+        zs = df[cols].apply(zscore)
+        mask = (zs.abs() <= factor).all(axis=1)
+
+    else:
+        raise ValueError(f"Unknown method={method!r}, use 'iqr' or 'zscore'")
+
+    return df.loc[mask].reset_index(drop=True)

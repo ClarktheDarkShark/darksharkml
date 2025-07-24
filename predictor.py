@@ -37,7 +37,7 @@ import pytz
 from db import db
 from models import DailyStats, TimeSeries  # TimeSeries kept for possible future extension
 from pipeline import _build_pipeline
-from feature_engineering import _prepare_training_frame
+from feature_engineering import _prepare_training_frame, drop_outliers
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG
@@ -161,6 +161,7 @@ def _load_daily_stats_df(app):
 # ─────────────────────────────────────────────────────────────────────────────
 def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, _ = _prepare_training_frame(df_daily)
+    df_daily = drop_outliers(df_daily, method='iqr', factor=1.5)
 
     tag_cols = [c for c in df_clean.columns if c.startswith('tag_')]
     feats = feats + tag_cols
@@ -190,27 +191,6 @@ def _train_model(df_daily: pd.DataFrame):
     # print(X_train.nunique())
 
     pipeline, mod = _build_pipeline(X_train)
-
-
-    # ── DEBUG: inspect the preprocessor output ────────────────────────────
-    pre = pipeline.named_steps['pre']
-
-    # tell it to produce a DataFrame with column names (sklearn ≥1.2)
-    pre.set_output(transform="pandas")
-
-    # fit & transform on the training set
-    X_debug = pre.fit_transform(X_train)
-
-    # print a sample and the feature names
-    with pd.option_context('display.max_rows', None):
-        print("\n>>> [DEBUG] Transformed features (row 0, transposed):")
-        print(X_debug.tail(5).T.round(4))
-
-    # revert to default (so GridSearchCV still sees an ndarray)
-    pre.set_output(transform="default")
-
-
-
     
     tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
 
@@ -613,3 +593,22 @@ if __name__ == "__main__":
     last_stream = _predictor_state["df_for_inf"]["stream_name"].iloc[-1]
     print("Example predgame:", predgame(last_stream, topn=3))
     print("Example predhour:", predhour(last_stream, hour=20, topn=3))
+
+
+def debugging_code(pipeline, X_train):
+    # ── DEBUG: inspect the preprocessor output ────────────────────────────
+    pre = pipeline.named_steps['pre']
+
+    # tell it to produce a DataFrame with column names (sklearn ≥1.2)
+    pre.set_output(transform="pandas")
+
+    # fit & transform on the training set
+    X_debug = pre.fit_transform(X_train)
+
+    # print a sample and the feature names
+    with pd.option_context('display.max_rows', None):
+        print("\n>>> [DEBUG] Transformed features (row 0, transposed):")
+        print(X_debug.tail(5).T.round(4))
+
+    # revert to default (so GridSearchCV still sees an ndarray)
+    pre.set_output(transform="default")

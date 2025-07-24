@@ -453,22 +453,22 @@ def show_feature_insights():
 
 
 
-    # ── DEBUG: inspect the preprocessor output ────────────────────────────
-    pre = pipe.named_steps['pre']
+    # # ── DEBUG: inspect the preprocessor output ────────────────────────────
+    # pre = pipe.named_steps['pre']
 
-    # tell it to produce a DataFrame with column names (sklearn ≥1.2)
-    pre.set_output(transform="pandas")
+    # # tell it to produce a DataFrame with column names (sklearn ≥1.2)
+    # pre.set_output(transform="pandas")
 
-    # fit & transform on the training set
-    X_debug = pre.fit_transform(df[features])
+    # # fit & transform on the training set
+    # X_debug = pre.fit_transform(df[features])
 
-    # print a sample and the feature names
-    with pd.option_context('display.max_rows', None):
-        print("\n>>> [DEBUG] Transformed features (row 0, transposed):")
-        print(X_debug.tail(5).T.round(4))
+    # # print a sample and the feature names
+    # with pd.option_context('display.max_rows', None):
+    #     print("\n>>> [DEBUG] Transformed features (row 0, transposed):")
+    #     print(X_debug.tail(5).T.round(4))
 
-    # revert to default (so GridSearchCV still sees an ndarray)
-    pre.set_output(transform="default")
+    # # revert to default (so GridSearchCV still sees an ndarray)
+    # pre.set_output(transform="default")
 
 
 
