@@ -16,13 +16,18 @@ if not hasattr(np, 'float'):
 if not hasattr(np, 'object'):
     np.object = object
 
-import pandas as pd                  # only used for typing / slicing
+
+import numpy as np
+import pandas as pd  
 import shap
 import matplotlib.pyplot as plt
 import io, base64
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.compose import TransformedTargetRegressor
+from sklearn.compose import TransformedTargetRegressor, ColumnTransformer
+from sklearn.pipeline import Pipeline, FunctionTransformer
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.preprocessing import MinMaxScaler, OrdinalEncoder
 
 from pipeline import join_raw_tags
 
@@ -160,12 +165,6 @@ def df_helper(explanation, feature_names, X_proc):
     )
     return plot_df
 
-import numpy as np
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import shap
-from sklearn.compose import TransformedTargetRegressor
 
 # ----------------------------------------------------------------------
 def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict[str, str]:
