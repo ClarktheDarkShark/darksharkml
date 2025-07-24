@@ -331,47 +331,21 @@ def _infer_grid_for_game(
 
     # ————————————— TAG EFFECT EXPERIMENT (vary_tags) —————————————
     if vary_tags:
+        # baseline prediction
         y_base = pipeline.predict(base)[0]
         records = []
 
-        # 1) if you have raw_tags lists in df_for_inf, use those
-        if 'raw_tags' in df_for_inf.columns:
-            # collect every tag ever seen
-            all_tags = sorted({
-                t
-                for tags in df_for_inf['raw_tags'].fillna([])
-                for t in tags
+        # for each one-hot tag_* column, flip it and measure the delta
+        for col in tag_cols:
+            mod = base.copy()
+            # flip 0→1 or 1→0
+            mod[col] = 1 - mod[col].iloc[0]
+            y_mod = pipeline.predict(mod)[0]
+            records.append({
+                'tag': col[len('tag_'):],               # strip prefix
+                'y_pred': y_mod,
+                'delta_from_baseline': y_mod - y_base
             })
-            for tag in all_tags:
-                mod = base.copy()
-                tags_list = list(mod.at[0, 'raw_tags'] or [])
-                if tag in tags_list:
-                    tags_list.remove(tag)
-                else:
-                    tags_list.append(tag)
-                mod.at[0, 'raw_tags'] = tags_list
-                y_mod = pipeline.predict(mod)[0]
-                records.append({
-                    'tag': tag,
-                    'y_pred': y_mod,
-                    'delta_from_baseline': y_mod - y_base
-                })
-
-        # 2) fallback to one-hot tag_* if raw_tags isn’t available
-        elif tag_cols:
-            for col in tag_cols:
-                mod = base.copy()
-                mod[col] = 1 - mod[col].iloc[0]
-                y_mod = pipeline.predict(mod)[0]
-                records.append({
-                    'tag': col[len('tag_'):],
-                    'y_pred': y_mod,
-                    'delta_from_baseline': y_mod - y_base
-                })
-
-        # 3) if no tags at all, return an empty frame with the right columns
-        else:
-            return pd.DataFrame(columns=['tag', 'y_pred', 'delta_from_baseline'])
 
         return (
             pd.DataFrame(records)
