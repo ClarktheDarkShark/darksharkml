@@ -13,6 +13,8 @@ from sklearn.preprocessing import FunctionTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition         import TruncatedSVD
 
+from pipeline import join_raw_tags
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PIPELINE BUILD
