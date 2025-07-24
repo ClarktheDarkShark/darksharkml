@@ -329,7 +329,7 @@ def _infer_grid_for_game(
     base["raw_tags"] = [ last["raw_tags"] ]
 
     # 3) add our cyclic time features
-    add_time_features(base)
+    # add_time_features(base)
 
     # 4) if override_tags is provided, replace the list
     if override_tags is not None and not vary_tags:
