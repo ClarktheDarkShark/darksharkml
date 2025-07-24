@@ -172,6 +172,21 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
 
     # ── 1. Interactive feature‐importance bar (mean |SHAP|)
     mean_abs = np.abs(explanation.values).mean(axis=0)
+    # 1) Compute mean(|SHAP|) per feature
+    importance = (
+        plot_df
+        .assign(abs_shap=lambda d: d['shap_value'].abs())
+        .groupby('feature')['abs_shap']
+        .mean()
+        .sort_values(ascending=False)
+    )
+
+    # 2a) Option A: keep only the top 20 features
+    top_k = 20
+    top_feats = importance.head(top_k).index.tolist()
+
+
+
     df_bar = pd.DataFrame({
         "feature": feature_names,
         "mean_abs": mean_abs
@@ -259,9 +274,13 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     )
     out["decision"] = fig_dec.to_html(full_html=False)
 
+
+
+
     plot_df = df_helper(explanation, feature_names, X_proc)
+    plot_df_filt = plot_df[plot_df['feature'].isin(top_feats)]
     beeswarm_fig = px.strip(
-        plot_df,
+        plot_df_filt,
         x="shap_value",
         y="feature",
         color="feature_value",
