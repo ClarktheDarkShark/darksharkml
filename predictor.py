@@ -153,13 +153,6 @@ def _train_model(df_daily: pd.DataFrame):
 
     # plot_features(feats, X_train, y_train, train_mask, df_clean)
 
-    print()
-    # print(X_train)
-    print('Train sample size:',X_train['start_time_hour'].tail())
-    print('Test sample size:',X_test['start_time_hour'].tail())
-    print()
-    # print(y_train.describe())
-    # print(X_train.nunique())
 
     pipeline, mod = _build_pipeline(X_train)
     
@@ -251,7 +244,7 @@ def train_predictor(app, *, log_metrics=True):
     df_daily = _load_daily_stats_df(app)
 
     # 2) **add hour + cyclic features**
-    add_time_features(df_daily)
+    # add_time_features(df_daily)
 
     # 3) train on that enriched frame
     model, pipe, df_inf, feats, metrics = _train_model(df_daily)

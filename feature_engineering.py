@@ -108,8 +108,14 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
         df["stream_start_time"] = pd.to_datetime(
             df["stream_start_time"].astype(str), errors="coerce"
         )
+
     df = df.sort_values(['stream_name','stream_date','stream_start_time'])
     df['start_time_hour'] = df['stream_start_time'].apply(_round_to_nearest_hour)
+
+    # >>> ADD the cyclic features early
+    df['start_hour_sin'] = np.sin(2 * np.pi * df['start_time_hour'] / 24)
+    df['start_hour_cos'] = np.cos(2 * np.pi * df['start_time_hour'] / 24)
+
     if 'day_of_week' not in df:
         df['day_of_week'] = df['stream_date'].dt.day_name()
     df['is_weekend'] = _compute_is_weekend(df['day_of_week'])
@@ -120,8 +126,12 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
     )
     df, hist_cols = _add_historical_rollups(df)
     base_feats = [
-        'day_of_week','start_time_hour','is_weekend',
-        'days_since_previous_stream','game_category','stream_duration'
+        'day_of_week',
+        'start_hour_sin', 'start_hour_cos',
+        'is_weekend',
+        'days_since_previous_stream',
+        'game_category',
+        'stream_duration'
     ]
 
     features = base_feats + hist_cols

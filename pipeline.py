@@ -44,8 +44,9 @@ def join_raw_tags(x):
 def _build_pipeline(X: pd.DataFrame):
     bool_cols        = X.select_dtypes(include=['bool']).columns.tolist()
     numeric_cols_all = X.select_dtypes(include=[np.number]).columns.tolist()
-    numeric_cols     = [c for c in numeric_cols_all
-                        if c not in bool_cols + ['start_time_hour']]
+
+    # KEEP all numeric cols now; no special exclusion
+    numeric_cols = [c for c in numeric_cols_all if c not in bool_cols]
 
     categorical_cols = [c for c in X.select_dtypes(include=['object','category']).columns
                         if c!='day_of_week' and c!='raw_tags'] 
