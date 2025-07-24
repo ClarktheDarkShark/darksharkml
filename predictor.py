@@ -326,18 +326,20 @@ def _infer_grid_for_game(
     # 1) grab the last-known feature row for this stream
     last = _get_last_row_for_stream(df_for_inf, stream_name)
 
-    # 2) build a 1-row DataFrame with everything except raw_tags,
-    #    then insert the raw_tags list back in
+        # 2) build a 1-row DataFrame and insert raw_tags as a single-cell list
     non_tag_feats = [f for f in features if f != "raw_tags"]
     base = last[non_tag_feats].to_frame().T
-    base["raw_tags"] = last["raw_tags"]
+
+    # wrap in [ … ] so pandas sees one element
+    base["raw_tags"] = [ last["raw_tags"] ]
 
     # 3) add our cyclic time features
     add_time_features(base)
 
     # 4) if override_tags is provided, replace the list
     if override_tags is not None and not vary_tags:
-        base["raw_tags"] = override_tags
+        # again, wrap in a list so we get a single‐cell column
+        base["raw_tags"] = [ override_tags ]
 
     # 5) TAG‐FLIPPING mode?
     if vary_tags:
