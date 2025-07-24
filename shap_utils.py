@@ -178,8 +178,45 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     -------
     dict[str, str]   HTML blobs keyed by plot name
     """
+
+    from sklearn.compose import ColumnTransformer
+    from sklearn.pipeline import Pipeline, FunctionTransformer
+    from sklearn.feature_extraction.text import CountVectorizer
+    from sklearn.preprocessing import MinMaxScaler, OrdinalEncoder
+
+
+    num_cols = [c for c in df[features].select_dtypes(include="number").columns
+                if c not in ["start_time_hour"]]  # etc
+    cat_cols = [c for c in df[features].select_dtypes(include="object").columns
+                if c not in ["raw_tags","day_of_week"]]
+    explain_pre = ColumnTransformer([
+        ("num",  MinMaxScaler(), num_cols),
+        ("tags", Pipeline([
+            ("join",      FunctionTransformer(join_raw_tags, validate=False)),
+            ("vectorize", CountVectorizer(max_features=200))
+        ]), ["raw_tags"]),
+        ("dow",  OrdinalEncoder(categories=[['Monday','Tuesday','Wednesday',
+                                             'Thursday','Friday','Saturday','Sunday']],
+                                handle_unknown="use_encoded_value",
+                                unknown_value=-1), ["day_of_week"]),
+        ("cat",  OrdinalEncoder(handle_unknown="use_encoded_value",
+                                unknown_value=-1),
+                 cat_cols),
+    ], remainder="drop")
+
     # 1) transform once through the pre‑processor
     X_raw  = df[features]
+    X_bow  = explain_pre.fit_transform(X_raw)  # or fit on your training set once
+    fnames = explain_pre.get_feature_names_out(features)
+
+    reg = pipeline.named_steps["reg"]
+    expl = shap.TreeExplainer(
+        reg.regressor_ if hasattr(reg, "regressor_") else reg,
+        data=X_bow,
+        feature_names=fnames
+    )
+    shap_exp = expl(X_bow, check_additivity=False)
+
     pre    = pipeline.named_steps["pre"]
     X_proc = pre.transform(X_raw)
 
