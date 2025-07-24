@@ -157,142 +157,53 @@ def df_helper(explanation, feature_names, X_proc):
     )
     return plot_df
 
-def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict[str, str]:
-    X_raw         = df[features]
-    pre           = pipeline.named_steps["pre"]
-    X_proc        = pre.transform(X_raw)
-    feature_names = pre.get_feature_names_out(features)
-    reg           = pipeline.named_steps["reg"].regressor_
+def generate_shap_plots(pipeline, X, features):
+    """
+    Given a fitted pipeline and raw feature matrix X (before transformation),
+    computes SHAP values and returns a dict of HTML/js blobs for summary,
+    dependence, bar and decision plots.
+    """
+    import shap
 
-    explainer   = shap.TreeExplainer(reg, data=X_proc, feature_names=feature_names)
-    explanation = explainer(X_proc, check_additivity=False)
+    # 1) pull off the “pre” step and turn it into a one‑step pipeline so we
+    #    can ask it for its output feature names
+    pre = pipeline.named_steps['pre']
+    # instead of calling pre.get_feature_names_out (which can mis‑dispatch),
+    # do this:
+    feature_names = pipeline[:-1].get_feature_names_out(features)
 
-    out: dict[str, str] = {}
-    out["js"] = shap.getjs()
+    # 2) transform X to the model’s input space
+    #    (we leave the regressor step on the full pipeline, but just use
+    #     pipeline[:-1] here)
+    X_trans = pipeline[:-1].transform(X)
 
+    # 3) fit a SHAP explainer on the *model* (last step), but pass the
+    #    transformed data
+    model = pipeline.named_steps['reg']
+    if isinstance(model, TransformedTargetRegressor):
+        wrapped = model.regressor_
+    else:
+        wrapped = model
+    explainer = shap.TreeExplainer(wrapped, feature_perturbation="interventional")
+    shap_values = explainer.shap_values(X_trans)
 
-    plot_df = df_helper(explanation, feature_names, X_proc)
-    # ── 1. Interactive feature‐importance bar (mean |SHAP|)
-    mean_abs = np.abs(explanation.values).mean(axis=0)
-    # 1) Compute mean(|SHAP|) per feature
-    importance = (
-        plot_df
-        .assign(abs_shap=lambda d: d['shap_value'].abs())
-        .groupby('feature')['abs_shap']
-        .mean()
-        .sort_values(ascending=False)
-    )
-
-    # 2a) Option A: keep only the top 20 features
-    top_k = 20
-    top_feats = importance.head(top_k).index.tolist()
-
-
-
-    df_bar = pd.DataFrame({
-        "feature": feature_names,
-        "mean_abs": mean_abs
-    })
-    fig = px.bar(
-        df_bar,
-        x="mean_abs",
-        y="feature",
-        orientation="h",
-        labels={"mean_abs":"mean |SHAP value|","feature":"feature"},
-        title="Global Feature Importance"
-    )
-
-    # 4. Sort categories so largest mean_abs is at the top
-    fig.update_yaxes(categoryorder="total descending")
-
-    out["bar"] = fig.to_html(full_html=False)
-
-    # ── 2. Interactive dependence plot for top 2 features
-    top2 = np.argsort(mean_abs)[-2:]
-    i, j = top2
-    fig = px.scatter(
-        x=X_proc[:, i],
-        y=explanation.values[:, i],
-        color=explanation.values[:, j],
-        labels={
-          "x": feature_names[i],
-          "y": f"SHAP({feature_names[i]})",
-          "color": feature_names[j]
-        },
-        title=f"Dependence: {feature_names[i]} colored by {feature_names[j]}"
-    )
-    out["dependence"] = fig.to_html(full_html=False)
-
-    # ── 3. SHAP Force plot (still use SHAP’s JS widget)
-    force_vis = shap.plots.force(
-      explanation[0], matplotlib=False, show=False
-    )
-    out["force"] = force_vis.html()
-
-    # 4) Decision plot
-    base      = explainer.expected_value
-    shap_vals = explanation.values[:10]
-
-    dec_obj = shap.plots.decision(
-        base,
-        shap_vals,
-        features=X_raw.iloc[:10],
-        feature_names=feature_names,
-        show=False,
-        return_objects=True
-    )
-
-    # Build Plotly Figure from DecisionPlotResult
-    order = dec_obj.feature_idx
-    vals  = dec_obj.shap_values[:, order]
-
-    # cumulative sums for each sample
-    cums = []
-    for row in vals:
-        cs = np.concatenate([[dec_obj.base_value], dec_obj.base_value + np.cumsum(row)])
-        cums.append(cs)
-    cums = np.vstack(cums)
-
-    fig_dec = go.Figure()
-    for row in cums:
-        fig_dec.add_trace(go.Scatter(
-            x=row,
-            y=np.arange(len(row)),
-            mode="lines",
-            line=dict(width=1),
-            showlegend=False
-        ))
-
-    fig_dec.update_layout(
-        title="Decision Plot",
-        xaxis=dict(range=dec_obj.xlim),
-        yaxis=dict(
-            tickmode="array",
-            tickvals=np.arange(1, len(order)+1),
-            ticktext=[feature_names[i] for i in order],
-            autorange="reversed"
-        ),
-        margin=dict(l=200, r=20, t=50, b=20)
-    )
-    out["decision"] = fig_dec.to_html(full_html=False)
-
-
-
-
-    
-    plot_df_filt = plot_df[plot_df['feature'].isin(top_feats)]
-    beeswarm_fig = px.strip(
-        plot_df_filt,
-        x="shap_value",
-        y="feature",
-        color="feature_value",
-        stripmode="overlay",    # dots overlap to show density
-        orientation="h",        # feature names on y‐axis
-        title="SHAP Summary (Beeswarm)"
-    )
-    # Optional styling: reduce marker size if you like
-    beeswarm_fig.update_traces(marker=dict(size=6))
-    out["summary"] = beeswarm_fig.to_html(full_html=False)
-
-
+    # 4) build each plot, capturing its HTML fragment
+    out = {}
+    out["summary"] = shap.plots.beeswarm(shap_values, X_trans,
+                                         feature_names=feature_names,
+                                         show=False, plot_size=(10,6)).html()
+    out["dependence"] = shap.plots.scatter(shap_values, X_trans,
+                                           feature_names=feature_names,
+                                           show=False).html()
+    out["bar"] = shap.plots.bar(shap_values, X_trans,
+                                feature_names=feature_names,
+                                show=False).html()
+    out["decision"] = shap.plots.decision_plot(explainer.expected_value,
+                                               shap_values, X_trans,
+                                               feature_names=feature_names,
+                                               show=False).html()
+    out["force"] = shap.force_plot(explainer.expected_value,
+                                   shap_values, X_trans,
+                                   feature_names=feature_names,
+                                   matplotlib=False).html()
     return out
