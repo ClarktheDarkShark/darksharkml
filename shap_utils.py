@@ -209,7 +209,18 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     # 1) transform once through the pre‑processor
     X_raw  = df[features]
     X_bow  = explain_pre.fit_transform(X_raw)  # or fit on your training set once
-    fnames = explain_pre.get_feature_names_out(features)
+    fnames: list[str] = []
+    for name, trans, cols in explain_pre.transformers_:
+        if name == "num":
+            # numeric features keep their original names
+            fnames.extend(cols)
+        elif name == "tags":
+            # extract each token from CountVectorizer and prefix
+            tokens = trans.named_steps["vectorize"].get_feature_names_out()
+            fnames.extend([f"{name}__{t}" for t in tokens])
+        elif name in ("dow", "cat"):
+            # ordinal encoders map one‑to‑one
+            fnames.extend(cols)
 
     reg = pipeline.named_steps["reg"]
     expl = shap.TreeExplainer(
