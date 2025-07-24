@@ -255,22 +255,22 @@ TEMPLATE_V2 = '''
       {% endfor %}
     </div>
     <div class="feature-group">
-      <span class="feature-label">Tags:</span>
-      {% for t in all_tags %}
+    <span class="feature-label">Tags:</span>
+    {% for t in all_tags[:20] %}
         <label>
-          <input type="checkbox"
-                 name="tags"
-                 id="input_tags_{{t}}"
-                 value="{{t}}"
-                 {% if t in selected_tags %}checked{% endif %}
-                 style="display:none;">
-          <button type="button"
-                  class="feature-btn tag-btn {% if t in selected_tags %}selected{% endif %}"
-                  onclick="selectFeature('tags','{{t}}',true)">
+        <input type="checkbox"
+                name="tags"
+                id="input_tags_{{t}}"
+                value="{{t}}"
+                {% if t in selected_tags %}checked{% endif %}
+                style="display:none;">
+        <button type="button"
+                class="feature-btn tag-btn {% if t in selected_tags %}selected{% endif %}"
+                onclick="selectFeature('tags','{{t}}',true)">
             {{ t }}
-          </button>
+        </button>
         </label>
-      {% endfor %}
+    {% endfor %}
     </div>
     <input type="hidden" name="manual" value="1">
     <button type="submit" class="update-btn">Update Prediction</button>
