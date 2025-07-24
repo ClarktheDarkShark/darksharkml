@@ -137,8 +137,8 @@ def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, _ = _prepare_training_frame(df_daily)
     df_daily = drop_outliers(df_daily, method='iqr', factor=1.5)
 
-    tag_cols = [c for c in df_clean.columns if c.startswith('tag_')]
-    feats = feats + tag_cols
+    # tag_cols = [c for c in df_clean.columns if c.startswith('tag_')]
+    # feats = feats + tag_cols
 
     y = df_clean['total_subscriptions']
     # y = df_clean['net_follower_change']
@@ -326,7 +326,7 @@ def _infer_grid_for_game(
     # 1) grab the last-known feature row for this stream
     last = _get_last_row_for_stream(df_for_inf, stream_name)
 
-        # 2) build a 1-row DataFrame and insert raw_tags as a single-cell list
+    # 2) build a 1-row DataFrame and insert raw_tags as a single-cell list
     non_tag_feats = [f for f in features if f != "raw_tags"]
     base = last[non_tag_feats].to_frame().T
 
