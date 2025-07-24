@@ -252,22 +252,28 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     )
     out["force"] = force_vis.html()
 
+
+
     # ── 4. Decision Plot (first 10 samples) ────────────────────────────
     base      = explainer.expected_value
-    shap_vals = explanation.values[:10]
+    shap_vals = explanation.values[:10]                 # (10, n_features)
+
+    # build a DataFrame that matches the SHAP column space
+    X_proc_df = pd.DataFrame(X_proc[:10], columns=feature_names)
 
     dec_obj = shap.plots.decision(
         base,
         shap_vals,
-        features=X_raw.iloc[:10],
+        features=X_proc_df,               # ← was X_raw.iloc[:10]
         feature_names=feature_names,
         show=False,
         return_objects=True
     )
+
     order = dec_obj.feature_idx
     vals  = dec_obj.shap_values[:, order]
 
-    # cumulative sums
+    # cumulative sums for each sample
     cums = np.c_[np.full((vals.shape[0], 1), dec_obj.base_value),
                  dec_obj.base_value + np.cumsum(vals, axis=1)]
 
@@ -280,6 +286,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
             line=dict(width=1),
             showlegend=False
         ))
+
     fig_dec.update_layout(
         title="Decision Plot",
         xaxis=dict(range=dec_obj.xlim),
@@ -292,6 +299,8 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
         margin=dict(l=200, r=20, t=50, b=20)
     )
     out["decision"] = fig_dec.to_html(full_html=False)
+
+
 
     # ── 5. Beeswarm (Plotly strip) ─────────────────────────────────────
     top_feats = (
