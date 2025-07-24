@@ -170,217 +170,92 @@ from sklearn.compose import TransformedTargetRegressor
 # ----------------------------------------------------------------------
 def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict[str, str]:
     """
-    Parameters
-    ----------
-    pipeline  : fitted `Pipeline([('pre', …), ('reg', TransformedTargetRegressor|Reg)])`
-    df        : *raw* dataframe containing all feature columns *including* 'raw_tags'
-    features  : list of column names the model expects (matches training)
-
-    Returns
-    -------
-    dict[str, str]   HTML blobs keyed by plot name
+    Compute SHAP values on a full bag‑of‑words tag matrix (no SVD),
+    so each tag token appears by name. Returns HTML snippets.
     """
 
-    from sklearn.compose import ColumnTransformer
-    from sklearn.pipeline import Pipeline, FunctionTransformer
-    from sklearn.feature_extraction.text import CountVectorizer
-    from sklearn.preprocessing import MinMaxScaler, OrdinalEncoder
+    # ────────────────────────────────────────────────────────────────
+    # 1) Build an “explain” preprocessor WITHOUT the SVD step
+    # ────────────────────────────────────────────────────────────────
+    num_cols = [c for c in df[features].select_dtypes(include="number")]
+    cat_cols = [c for c in df[features].select_dtypes(include="object")
+                if c not in ("raw_tags", "day_of_week")]
 
+    explain_pre = ColumnTransformer(
+        transformers=[
+            ("num", MinMaxScaler(), num_cols),
+            ("tags", Pipeline([
+                ("join",      FunctionTransformer(join_raw_tags, validate=False)),
+                ("vectorize", CountVectorizer(max_features=200))
+            ]), ["raw_tags"]),
+            ("dow", OrdinalEncoder(
+                categories=[['Monday','Tuesday','Wednesday','Thursday',
+                             'Friday','Saturday','Sunday']],
+                handle_unknown="use_encoded_value",
+                unknown_value=-1
+            ), ["day_of_week"]),
+            ("cat", OrdinalEncoder(
+                handle_unknown="use_encoded_value",
+                unknown_value=-1
+            ), cat_cols),
+        ],
+        remainder="drop"
+    )
 
-    num_cols = [c for c in df[features].select_dtypes(include="number").columns
-                if c not in ["start_time_hour"]]  # etc
-    cat_cols = [c for c in df[features].select_dtypes(include="object").columns
-                if c not in ["raw_tags","day_of_week"]]
-    explain_pre = ColumnTransformer([
-        ("num",  MinMaxScaler(), num_cols),
-        ("tags", Pipeline([
-            ("join",      FunctionTransformer(join_raw_tags, validate=False)),
-            ("vectorize", CountVectorizer(max_features=200))
-        ]), ["raw_tags"]),
-        ("dow",  OrdinalEncoder(categories=[['Monday','Tuesday','Wednesday',
-                                             'Thursday','Friday','Saturday','Sunday']],
-                                handle_unknown="use_encoded_value",
-                                unknown_value=-1), ["day_of_week"]),
-        ("cat",  OrdinalEncoder(handle_unknown="use_encoded_value",
-                                unknown_value=-1),
-                 cat_cols),
-    ], remainder="drop")
+    # ────────────────────────────────────────────────────────────────
+    # 2) Fit & transform to get a sparse bag‑of‑words matrix
+    # ────────────────────────────────────────────────────────────────
+    X_raw = df[features]
+    X_bow = explain_pre.fit_transform(X_raw)
 
-    # 1) transform once through the pre‑processor
-    X_raw  = df[features]
-    X_bow  = explain_pre.fit_transform(X_raw)  # or fit on your training set once
+    # ─── convert to dense if sparse
+    if hasattr(X_bow, "toarray"):
+        X_bow = X_bow.toarray()
+
+    # ────────────────────────────────────────────────────────────────
+    # 3) Manually reconstruct the token‑level feature names
+    # ────────────────────────────────────────────────────────────────
     fnames: list[str] = []
     for name, trans, cols in explain_pre.transformers_:
         if name == "num":
-            # numeric features keep their original names
             fnames.extend(cols)
         elif name == "tags":
-            # extract each token from CountVectorizer and prefix
             tokens = trans.named_steps["vectorize"].get_feature_names_out()
             fnames.extend([f"{name}__{t}" for t in tokens])
         elif name in ("dow", "cat"):
-            # ordinal encoders map one‑to‑one
             fnames.extend(cols)
 
-    reg = pipeline.named_steps["reg"]
-    expl = shap.TreeExplainer(
-        reg.regressor_ if hasattr(reg, "regressor_") else reg,
-        data=X_bow,
-        feature_names=fnames
-    )
-    shap_exp = expl(X_bow, check_additivity=False)
-
-    pre    = pipeline.named_steps["pre"]
-    X_proc = pre.transform(X_raw)
-
-    # 2) feature names — new tag pipeline may not implement get_feature_names_out
-    try:
-        # the “official” way; will work if every sub‐transformer implements get_feature_names_out
-        feature_names = pre.get_feature_names_out(features)
-    except Exception:
-        # manual fallback: pull names out of each transformer in order
-        feature_names = []
-        for name, trans, cols in pre.transformers_:
-            if name == "num":
-                # numeric columns come through as-is
-                feature_names.extend(cols)
-            elif name == "tags":
-                # tag_pipeline = Pipeline([…, ('svd', TruncatedSVD(n_components=N))])
-                n_comp = trans.named_steps["svd"].n_components
-                feature_names.extend([f"tags__svd_{i}" for i in range(n_comp)])
-            elif name == "bool":
-                feature_names.extend(cols)
-            elif name == "dow":
-                feature_names.extend(cols)        # day_of_week encoded as integer
-            elif name == "cat":
-                feature_names.extend(cols)        # other categorical cols
-            # remainder is 'drop', so nothing else to add
-
-    # 3) unwrap regressor if it’s inside a TransformedTargetRegressor
+    # ────────────────────────────────────────────────────────────────
+    # 4) Run SHAP on that dense bag‑of‑words data
+    # ────────────────────────────────────────────────────────────────
     reg = pipeline.named_steps["reg"]
     if isinstance(reg, TransformedTargetRegressor):
         reg = reg.regressor_
 
-    # 4) SHAP explanation
-    explainer   = shap.TreeExplainer(reg, data=X_proc, feature_names=feature_names)
-    explanation = explainer(X_proc, check_additivity=False)
+    explainer = shap.TreeExplainer(reg, data=X_bow, feature_names=fnames)
+    shap_exp  = explainer(X_bow, check_additivity=False)
 
-    out: dict[str, str] = {}
-    out["js"] = shap.getjs()                       # include once per page
+    out: dict[str, str] = {"js": shap.getjs()}
 
-    # ------------------------------------------------------------------
-    # helper → long dataframe for Plotly beeswarm etc.
-    # ------------------------------------------------------------------
-    shap_df = pd.DataFrame(explanation.values, columns=feature_names)
-    raw_df  = pd.DataFrame(X_proc,               columns=feature_names)
-    plot_df = (
-        shap_df.melt(var_name="feature", value_name="shap_value")
-        .join(
-            raw_df.melt(var_name="feature", value_name="feature_value")[["feature_value"]]
-        )
-    )
+    # ────────────────────────────────────────────────────────────────
+    # 5) Build a long DataFrame for Plotly (beeswarm, etc.)
+    # ────────────────────────────────────────────────────────────────
+    plot_df = df_helper(shap_exp, fnames, X_bow)
 
-    # ── 1. Global Importance Bar ───────────────────────────────────────
-    mean_abs = np.abs(explanation.values).mean(axis=0)
-    df_bar = pd.DataFrame({
-        "feature": feature_names,
-        "mean_abs": mean_abs
-    })
-    fig_bar = px.bar(
-        df_bar,
-        x="mean_abs",
-        y="feature",
-        orientation="h",
-        labels={"mean_abs": "mean |SHAP value|", "feature": "feature"},
-        title="Global Feature Importance"
-    )
-    fig_bar.update_yaxes(categoryorder="total descending")
-    out["bar"] = fig_bar.to_html(full_html=False)
-
-    # ── 2. Dependence Plot (top‑2 features) ────────────────────────────
-    top2 = np.argsort(mean_abs)[-2:]
-    i, j = top2
-    fig_dep = px.scatter(
-        x=X_proc[:, i],
-        y=explanation.values[:, i],
-        color=explanation.values[:, j],
-        labels={
-            "x": feature_names[i],
-            "y": f"SHAP({feature_names[i]})",
-            "color": feature_names[j]
-        },
-        title=f"Dependence: {feature_names[i]} colored by {feature_names[j]}"
-    )
-    out["dependence"] = fig_dep.to_html(full_html=False)
-
-    # ── 3. SHAP Force plot (first sample) ──────────────────────────────
-    force_vis = shap.plots.force(
-        explanation[0], matplotlib=False, show=False
-    )
-    out["force"] = force_vis.html()
-
-
-
-    # ── 4. Decision Plot (first 10 samples) ────────────────────────────
-    base      = explainer.expected_value
-    shap_vals = explanation.values[:10]                 # (10, n_features)
-
-    # build a DataFrame that matches the SHAP column space
-    X_proc_df = pd.DataFrame(X_proc[:10], columns=feature_names)
-
-    dec_obj = shap.plots.decision(
-        base,
-        shap_vals,
-        features=X_proc_df,               # ← was X_raw.iloc[:10]
-        feature_names=feature_names,
-        show=False,
-        return_objects=True
-    )
-
-    order = dec_obj.feature_idx
-    vals  = dec_obj.shap_values[:, order]
-
-    # cumulative sums for each sample
-    cums = np.c_[np.full((vals.shape[0], 1), dec_obj.base_value),
-                 dec_obj.base_value + np.cumsum(vals, axis=1)]
-
-    fig_dec = go.Figure()
-    for row in cums:
-        fig_dec.add_trace(go.Scatter(
-            x=row,
-            y=np.arange(len(row)),
-            mode="lines",
-            line=dict(width=1),
-            showlegend=False
-        ))
-
-    fig_dec.update_layout(
-        title="Decision Plot",
-        xaxis=dict(range=dec_obj.xlim),
-        yaxis=dict(
-            tickmode="array",
-            tickvals=np.arange(1, len(order) + 1),
-            ticktext=[feature_names[idx] for idx in order],
-            autorange="reversed"
-        ),
-        margin=dict(l=200, r=20, t=50, b=20)
-    )
-    out["decision"] = fig_dec.to_html(full_html=False)
-
-
-
-    # ── 5. Beeswarm (Plotly strip) ─────────────────────────────────────
+    # ────────────────────────────────────────────────────────────────
+    # 6) Summary Beeswarm (top 20 tokens)
+    # ────────────────────────────────────────────────────────────────
     top_feats = (
         plot_df
         .assign(abs_shap=lambda d: d["shap_value"].abs())
         .groupby("feature")["abs_shap"]
         .mean()
         .sort_values(ascending=False)
-        .head(20).index
+        .head(20)
+        .index
     )
-    plot_df_filt = plot_df[plot_df["feature"].isin(top_feats)]
     beeswarm_fig = px.strip(
-        plot_df_filt,
+        plot_df[plot_df["feature"].isin(top_feats)],
         x="shap_value",
         y="feature",
         color="feature_value",
@@ -391,6 +266,77 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     beeswarm_fig.update_traces(marker=dict(size=6))
     out["summary"] = beeswarm_fig.to_html(full_html=False)
 
+    # ────────────────────────────────────────────────────────────────
+    # 7) Dependence Plot (top‑2 tokens)
+    # ────────────────────────────────────────────────────────────────
+    mean_abs = np.abs(shap_exp.values).mean(axis=0)
+    i, j = np.argsort(mean_abs)[-2:]
+    dep_fig = px.scatter(
+        x=X_bow[:, i],
+        y=shap_exp.values[:, i],
+        color=shap_exp.values[:, j],
+        labels={
+            "x": fnames[i],
+            "y": f"SHAP({fnames[i]})",
+            "color": fnames[j]
+        },
+        title=f"Dependence: {fnames[i]} colored by {fnames[j]}"
+    )
+    out["dependence"] = dep_fig.to_html(full_html=False)
+
+    # ────────────────────────────────────────────────────────────────
+    # 8) Bar Plot (mean |SHAP|)
+    # ────────────────────────────────────────────────────────────────
+    df_bar = pd.DataFrame({"feature": fnames, "mean_abs": mean_abs})
+    bar_fig = px.bar(
+        df_bar.sort_values("mean_abs", ascending=True),
+        x="mean_abs",
+        y="feature",
+        orientation="h",
+        title="Global Feature Importance"
+    )
+    bar_fig.update_yaxes(categoryorder="total descending")
+    out["bar"] = bar_fig.to_html(full_html=False)
+
+    # ────────────────────────────────────────────────────────────────
+    # 9) Decision Plot (first 10 samples)
+    # ────────────────────────────────────────────────────────────────
+    base_val   = shap_exp.base_values[0] if hasattr(shap_exp, "base_values") else explainer.expected_value
+    shap_vals  = shap_exp.values[:10]
+    X_df       = pd.DataFrame(X_bow[:10], columns=fnames)
+    dec_obj    = shap.plots.decision(
+        base_val,
+        shap_vals,
+        features=X_df,
+        feature_names=fnames,
+        show=False,
+        return_objects=True
+    )
+    # re‑build as Plotly
+    order = dec_obj.feature_idx
+    vals  = dec_obj.shap_values[:, order]
+    cums  = np.c_[np.full((vals.shape[0], 1), dec_obj.base_value),
+                  dec_obj.base_value + np.cumsum(vals, axis=1)]
+    fig_dec = go.Figure()
+    for row in cums:
+        fig_dec.add_trace(go.Scatter(x=row, y=np.arange(len(row)),
+                                     mode="lines", line=dict(width=1),
+                                     showlegend=False))
+    fig_dec.update_layout(
+        title="Decision Plot",
+        xaxis=dict(range=dec_obj.xlim),
+        yaxis=dict(tickmode="array",
+                   tickvals=np.arange(1, len(order)+1),
+                   ticktext=[fnames[idx] for idx in order],
+                   autorange="reversed"),
+        margin=dict(l=200, r=20, t=50, b=20)
+    )
+    out["decision"] = fig_dec.to_html(full_html=False)
+
+    # ────────────────────────────────────────────────────────────────
+    # 10) Force Plot (first sample)
+    # ────────────────────────────────────────────────────────────────
+    force_vis    = shap.plots.force(shap_exp[0], matplotlib=False, show=False)
+    out["force"] = force_vis.html()
+
     return out
-
-
