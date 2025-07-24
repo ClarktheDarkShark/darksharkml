@@ -158,70 +158,151 @@ def df_helper(explanation, feature_names, X_proc):
     )
     return plot_df
 
-def generate_shap_plots(pipeline, X_raw, features):
-    """
-    Compute SHAP values for a fitted scikit‑learn pipeline and return HTML
-    snippets for the summary (beeswarm), dependence, bar, decision and force
-    plots.  The beeswarm is rendered with Plotly to match the dashboard style.
-    """
-    import shap
-    import pandas as pd
-    import plotly.express as px
-    from sklearn.compose import TransformedTargetRegressor
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import shap
+from sklearn.compose import TransformedTargetRegressor
 
-    # ------------------------------------------------------------------
-    # 1. Transform the raw feature frame once
-    # ------------------------------------------------------------------
-    X_trans = pipeline[:-1].transform(X_raw)
+# ----------------------------------------------------------------------
+def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict[str, str]:
+    """
+    Parameters
+    ----------
+    pipeline  : fitted `Pipeline([('pre', …), ('reg', TransformedTargetRegressor|Reg)])`
+    df        : *raw* dataframe containing all feature columns *including* 'raw_tags'
+    features  : list of column names the model expects (matches training)
 
-    # ------------------------------------------------------------------
-    # 2. Recover or synthesise feature names
-    # ------------------------------------------------------------------
+    Returns
+    -------
+    dict[str, str]   HTML blobs keyed by plot name
+    """
+    # 1) transform once through the pre‑processor
+    X_raw  = df[features]
+    pre    = pipeline.named_steps["pre"]
+    X_proc = pre.transform(X_raw)
+
+    # 2) feature names — new tag pipeline may not implement get_feature_names_out
     try:
-        feature_names = pipeline[:-1].get_feature_names_out(features)
+        feature_names = pre.get_feature_names_out(features)
     except Exception:
-        feature_names = [f"f{i}" for i in range(X_trans.shape[1])]
+        feature_names = [f"f{i}" for i in range(X_proc.shape[1])]
 
-    # ------------------------------------------------------------------
-    # 3. Fit the SHAP explainer
-    # ------------------------------------------------------------------
+    # 3) unwrap regressor if it’s inside a TransformedTargetRegressor
     reg = pipeline.named_steps["reg"]
     if isinstance(reg, TransformedTargetRegressor):
         reg = reg.regressor_
 
-    explainer   = shap.TreeExplainer(reg, feature_perturbation="interventional")
-    shap_values = explainer.shap_values(X_trans)
+    # 4) SHAP explanation
+    explainer   = shap.TreeExplainer(reg, data=X_proc, feature_names=feature_names)
+    explanation = explainer(X_proc, check_additivity=False)
 
-    # Wrap everything in an Explanation so SHAP is happy with new API
-    exp = shap.Explanation(
-        values       = shap_values,
-        base_values  = explainer.expected_value,
-        data         = X_trans,
-        feature_names= feature_names,
-    )
+    out: dict[str, str] = {}
+    out["js"] = shap.getjs()                       # include once per page
 
     # ------------------------------------------------------------------
-    # 4a. ― Beeswarm (Plotly)
+    # helper → long dataframe for Plotly beeswarm etc.
     # ------------------------------------------------------------------
-    # Turn the Explanation into a tidy DataFrame
-    shap_df   = pd.DataFrame(exp.values,  columns=feature_names)
-    raw_df    = pd.DataFrame(X_trans,     columns=feature_names)
-
-    long_df   = (
+    shap_df = pd.DataFrame(explanation.values, columns=feature_names)
+    raw_df  = pd.DataFrame(X_proc,               columns=feature_names)
+    plot_df = (
         shap_df.melt(var_name="feature", value_name="shap_value")
         .join(
-            raw_df.melt(var_name="feature", value_name="feature_value")[
-                ["feature_value"]
-            ]
+            raw_df.melt(var_name="feature", value_name="feature_value")[["feature_value"]]
         )
     )
 
-    # keep top‑N absolute contributors (otherwise huge frames kill Plotly)
-    top_feats = (
-        shap_df.abs().mean().sort_values(ascending=False).head(20).index.tolist()
+    # ── 1. Global Importance Bar ───────────────────────────────────────
+    mean_abs = np.abs(explanation.values).mean(axis=0)
+    df_bar = pd.DataFrame({
+        "feature": feature_names,
+        "mean_abs": mean_abs
+    })
+    fig_bar = px.bar(
+        df_bar,
+        x="mean_abs",
+        y="feature",
+        orientation="h",
+        labels={"mean_abs": "mean |SHAP value|", "feature": "feature"},
+        title="Global Feature Importance"
     )
-    plot_df_filt = long_df[long_df["feature"].isin(top_feats)]
+    fig_bar.update_yaxes(categoryorder="total descending")
+    out["bar"] = fig_bar.to_html(full_html=False)
 
+    # ── 2. Dependence Plot (top‑2 features) ────────────────────────────
+    top2 = np.argsort(mean_abs)[-2:]
+    i, j = top2
+    fig_dep = px.scatter(
+        x=X_proc[:, i],
+        y=explanation.values[:, i],
+        color=explanation.values[:, j],
+        labels={
+            "x": feature_names[i],
+            "y": f"SHAP({feature_names[i]})",
+            "color": feature_names[j]
+        },
+        title=f"Dependence: {feature_names[i]} colored by {feature_names[j]}"
+    )
+    out["dependence"] = fig_dep.to_html(full_html=False)
+
+    # ── 3. SHAP Force plot (first sample) ──────────────────────────────
+    force_vis = shap.plots.force(
+        explanation[0], matplotlib=False, show=False
+    )
+    out["force"] = force_vis.html()
+
+    # ── 4. Decision Plot (first 10 samples) ────────────────────────────
+    base      = explainer.expected_value
+    shap_vals = explanation.values[:10]
+
+    dec_obj = shap.plots.decision(
+        base,
+        shap_vals,
+        features=X_raw.iloc[:10],
+        feature_names=feature_names,
+        show=False,
+        return_objects=True
+    )
+    order = dec_obj.feature_idx
+    vals  = dec_obj.shap_values[:, order]
+
+    # cumulative sums
+    cums = np.c_[np.full((vals.shape[0], 1), dec_obj.base_value),
+                 dec_obj.base_value + np.cumsum(vals, axis=1)]
+
+    fig_dec = go.Figure()
+    for row in cums:
+        fig_dec.add_trace(go.Scatter(
+            x=row,
+            y=np.arange(len(row)),
+            mode="lines",
+            line=dict(width=1),
+            showlegend=False
+        ))
+    fig_dec.update_layout(
+        title="Decision Plot",
+        xaxis=dict(range=dec_obj.xlim),
+        yaxis=dict(
+            tickmode="array",
+            tickvals=np.arange(1, len(order) + 1),
+            ticktext=[feature_names[idx] for idx in order],
+            autorange="reversed"
+        ),
+        margin=dict(l=200, r=20, t=50, b=20)
+    )
+    out["decision"] = fig_dec.to_html(full_html=False)
+
+    # ── 5. Beeswarm (Plotly strip) ─────────────────────────────────────
+    top_feats = (
+        plot_df
+        .assign(abs_shap=lambda d: d["shap_value"].abs())
+        .groupby("feature")["abs_shap"]
+        .mean()
+        .sort_values(ascending=False)
+        .head(20).index
+    )
+    plot_df_filt = plot_df[plot_df["feature"].isin(top_feats)]
     beeswarm_fig = px.strip(
         plot_df_filt,
         x="shap_value",
@@ -229,23 +310,11 @@ def generate_shap_plots(pipeline, X_raw, features):
         color="feature_value",
         stripmode="overlay",
         orientation="h",
-        title="SHAP Summary (Beeswarm)",
+        title="SHAP Summary (Beeswarm)"
     )
     beeswarm_fig.update_traces(marker=dict(size=6))
-
-    # ------------------------------------------------------------------
-    # 4b. ― Other plots (use SHAP’s built‑ins)
-    # ------------------------------------------------------------------
-    out = {
-        "summary":  beeswarm_fig.to_html(full_html=False),
-        "dependence": shap.plots.scatter(exp, show=False).html(),
-        "bar":        shap.plots.bar(exp,     show=False).html(),
-        "decision":   shap.plots.decision(exp, show=False).html(),
-        "force":      shap.force_plot(
-            explainer.expected_value, exp.values, exp.data,
-            feature_names=feature_names, matplotlib=False
-        ).html(),
-    }
+    out["summary"] = beeswarm_fig.to_html(full_html=False)
 
     return out
+
 
