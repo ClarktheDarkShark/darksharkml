@@ -304,7 +304,7 @@ def _infer_grid_for_game(
     df_for_inf: pd.DataFrame,
     features: List[str],
     stream_name: str,
-    override_tags: Optional[list[str]] = None,
+    override_tags: Optional[List[str]] = None,
     start_times: Optional[Iterable[int]] = None,
     durations: Optional[Iterable[int]] = None,
     category_options: Optional[Iterable[str]] = None,
@@ -312,58 +312,68 @@ def _infer_grid_for_game(
     top_n: int = 10,
     unique_scores: bool = True,
     start_hour_filter: Optional[int] = None,
-    vary_tags: bool = False,           # ← new flag
+    vary_tags: bool = False,
 ):
+    """
+    If vary_tags=False, returns top_n rows over the (game, hour, duration) grid,
+    with predictions + confidence + tags list.
+    If vary_tags=True, flips each tag in turn on/off in the raw_tags list,
+    measures delta_from_baseline, and returns those effects.
+    """
     if pipeline is None:
         raise RuntimeError("Predictor pipeline is not trained.")
 
-    # 1) get the last-known feature row
-    last_row = _get_last_row_for_stream(df_for_inf, stream_name)
-    base = last_row[features].to_frame().T
+    # 1) grab the last-known feature row for this stream
+    last = _get_last_row_for_stream(df_for_inf, stream_name)
+
+    # 2) build a 1-row DataFrame with everything except raw_tags,
+    #    then insert the raw_tags list back in
+    non_tag_feats = [f for f in features if f != "raw_tags"]
+    base = last[non_tag_feats].to_frame().T
+    base["raw_tags"] = last["raw_tags"]
+
+    # 3) add our cyclic time features
     add_time_features(base)
 
-    # apply any override_tags (for manual tuning)
-    tag_cols = [c for c in features if c.startswith('tag_')]
+    # 4) if override_tags is provided, replace the list
     if override_tags is not None and not vary_tags:
-        for col in tag_cols:
-            tag = col[len("tag_"):]
-            base[col] = 1 if tag in override_tags else 0
+        base["raw_tags"] = override_tags
 
-    # ————————————— TAG EFFECT EXPERIMENT (vary_tags) —————————————
+    # 5) TAG‐FLIPPING mode?
     if vary_tags:
-        # collect your tag_* columns
-        tag_cols = [c for c in features if c.startswith('tag_')]
-
-        # if there are no one‑hot tag columns, just return an empty frame
-        if not tag_cols:
-            return pd.DataFrame(columns=['tag','y_pred','delta_from_baseline'])
-
         # baseline prediction
         y_base = pipeline.predict(base)[0]
-        records = []
 
-        # for each one‑hot tag column, flip it and measure the delta
-        for col in tag_cols:
+        # universe of all tags ever seen
+        all_tags = sorted({t for tags in df_for_inf["raw_tags"] for t in tags})
+
+        records = []
+        for tag in all_tags:
             mod = base.copy()
-            mod[col] = 1 - mod[col].iloc[0]       # flip 0→1 or 1→0
-            y_mod   = pipeline.predict(mod)[0]
+            current = set(mod.at[mod.index[0], "raw_tags"])
+            # flip this tag’s presence
+            if tag in current:
+                current.remove(tag)
+            else:
+                current.add(tag)
+            mod.at[mod.index[0], "raw_tags"] = list(current)
+
+            y_mod = pipeline.predict(mod)[0]
             records.append({
-                'tag': col[len('tag_'):],         # strip prefix
-                'y_pred': y_mod,
-                'delta_from_baseline': y_mod - y_base
+                "tag": tag,
+                "y_pred": y_mod,
+                "delta_from_baseline": y_mod - y_base
             })
 
         return (
             pd.DataFrame(records)
-              .sort_values('delta_from_baseline', ascending=False)
+              .sort_values("delta_from_baseline", ascending=False)
               .reset_index(drop=True)
         )
-    # ————————————————————————————————————————————————————————————————
 
-    # --- ORIGINAL GRID-BASED INFERENCE (unchanged) ---
+    # 6) GRID‐BASED mode: build (game, hour, duration) grid
     if today_name is None:
-        est = pytz.timezone("US/Eastern")
-        today_name = datetime.now(est).strftime("%A")
+        today_name = datetime.now(EST).strftime("%A")
 
     if category_options is None:
         category_options = sorted(df_for_inf["game_category"].dropna().unique().tolist())
@@ -373,59 +383,64 @@ def _infer_grid_for_game(
         restrict_to_stream_game = False
 
     if start_times is None:
-        start_times = _predictor_state['optional_start_times']
+        start_times = _predictor_state["optional_start_times"]
     if durations is None:
         durations = DEFAULT_DURATIONS_HRS
 
+    import itertools
     combos = list(itertools.product(category_options, start_times, durations))
-    grid = pd.DataFrame(combos, columns=['game_category','start_time_hour','stream_duration'])
+    grid = pd.DataFrame(combos, columns=["game_category","start_time_hour","stream_duration"])
 
+    # repeat base row for each combo, then overwrite the 3 dynamic columns
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
-    for col in ['game_category','start_time_hour','stream_duration']:
+    for col in ["game_category","start_time_hour","stream_duration"]:
         base_rep[col] = grid[col]
     add_time_features(base_rep)
 
+    # predict
     X_inf = base_rep[features]
     preds  = pipeline.predict(X_inf)
 
-    pre    = pipeline.named_steps['pre']
-    X_pre  = pre.transform(X_inf)
-    model  = pipeline.named_steps['reg']
+    # approximate confidence via tree‑ensemble σ
+    pre  = pipeline.named_steps["pre"]
+    X_pre = pre.transform(X_inf)
+    model = pipeline.named_steps["reg"]
+    from sklearn.compose import TransformedTargetRegressor
     if isinstance(model, TransformedTargetRegressor):
         model = model.regressor_
-    if hasattr(model, 'estimators_'):
+    if hasattr(model, "estimators_"):
         all_tree_preds = np.stack([t.predict(X_pre) for t in model.estimators_], axis=1)
         sigma = all_tree_preds.std(axis=1)
-    elif hasattr(model, 'staged_predict'):
-        staged  = np.stack(list(model.staged_predict(X_pre)), axis=1)
-        sigma   = np.diff(staged, axis=1).std(axis=1)
+    elif hasattr(model, "staged_predict"):
+        staged = np.stack(list(model.staged_predict(X_pre)), axis=1)
+        sigma  = np.diff(staged, axis=1).std(axis=1)
     else:
-        sigma = np.full(len(X_pre), fill_value=np.mean(preds)*0.01)
-
+        sigma = np.full(len(X_pre), fill_value=np.mean(preds) * 0.01)
     conf = 1.0 / (1.0 + sigma)
 
+    # assemble results
     results = X_inf.copy()
-    results['y_pred'] = preds
-    results['conf']   = conf
+    results["y_pred"] = preds
+    results["conf"]   = conf
 
-    if tag_cols:
-        results['tags'] = results[tag_cols].apply(
-            lambda row: [c[len('tag_'):] for c,v in row.items() if v==1],
-            axis=1
-        )
-    else:
-        results['tags'] = [[]] * len(results)
+    # pull tags back out of the pipeline’s encoded features
+    # by re-using raw_tags column
+    results["tags"] = base_rep["raw_tags"]
 
+    # optionally restrict to the stream’s own game category
     if restrict_to_stream_game:
-        game_cat = last_row["game_category"]
-        results = results[results['game_category'] == game_cat]
-    if start_hour_filter is not None:
-        results = results[results['start_time_hour'] == start_hour_filter]
+        this_game = last["game_category"]
+        results = results[results["game_category"] == this_game]
 
-    results = results.sort_values('y_pred', ascending=False)
+    # filter a single hour if requested
+    if start_hour_filter is not None:
+        results = results[results["start_time_hour"] == start_hour_filter]
+
+    # sort & drop duplicate scores for the same hour
+    results = results.sort_values("y_pred", ascending=False)
     results = results.drop_duplicates(
-        subset=['y_pred', 'start_time_hour'],
-        keep='first'
+        subset=["y_pred","start_time_hour"],
+        keep="first"
     )
 
     return results.head(top_n).reset_index(drop=True)
