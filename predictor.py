@@ -436,7 +436,7 @@ def _infer_grid_for_game(
     # sort & drop duplicate scores for the same hour
     results = results.sort_values("y_pred", ascending=False)
     results = results.drop_duplicates(
-        subset=["y_pred","start_time_hour"],
+        subset=["y_pred"],
         keep="first"
     )
 
