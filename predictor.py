@@ -314,62 +314,77 @@ def _infer_grid_for_game(
     start_hour_filter: Optional[int] = None,
     vary_tags: bool = False,           # ← new flag
 ):
-    """
-    If vary_tags=False (default), does the usual game/hour/duration grid and returns
-    a DataFrame of top_n rows with y_pred and conf, plus a 'tags' column pulled
-    from the one-hot tag_* features.
-
-    If vary_tags=True, ignores start_times/durations/category_options and instead
-    flips each tag_* on/off in turn (holding everything else at its last-known
-    values), predicts y_pred, and returns a DataFrame of tag effects sorted
-    by delta_from_baseline.
-    """
     if pipeline is None:
         raise RuntimeError("Predictor pipeline is not trained.")
 
-
     # 1) get the last-known feature row
     last_row = _get_last_row_for_stream(df_for_inf, stream_name)
-    # collect your tag columns
-    tag_cols = [c for c in features if c.startswith('tag_')]
-    # base feature vector
     base = last_row[features].to_frame().T
     add_time_features(base)
 
+    # apply any override_tags (for manual tuning)
+    tag_cols = [c for c in features if c.startswith('tag_')]
     if override_tags is not None and not vary_tags:
         for col in tag_cols:
             tag = col[len("tag_"):]
             base[col] = 1 if tag in override_tags else 0
 
+    # ————————————— TAG EFFECT EXPERIMENT (vary_tags) —————————————
     if vary_tags:
-        # --- TAG EFFECT EXPERIMENT ---
-        # baseline prediction
         y_base = pipeline.predict(base)[0]
-
         records = []
-        for tag in tag_cols:
-            mod = base.copy()
-            # flip this tag
-            mod[tag] = 1 if base[tag].iloc[0] == 0 else 0
-            y_mod   = pipeline.predict(mod)[0]
-            records.append({
-                'tag': tag[len('tag_'):],               # strip prefix
-                'y_pred': y_mod,
-                'delta_from_baseline': y_mod - y_base
+
+        # 1) if you have raw_tags lists in df_for_inf, use those
+        if 'raw_tags' in df_for_inf.columns:
+            # collect every tag ever seen
+            all_tags = sorted({
+                t
+                for tags in df_for_inf['raw_tags'].fillna([])
+                for t in tags
             })
+            for tag in all_tags:
+                mod = base.copy()
+                tags_list = list(mod.at[0, 'raw_tags'] or [])
+                if tag in tags_list:
+                    tags_list.remove(tag)
+                else:
+                    tags_list.append(tag)
+                mod.at[0, 'raw_tags'] = tags_list
+                y_mod = pipeline.predict(mod)[0]
+                records.append({
+                    'tag': tag,
+                    'y_pred': y_mod,
+                    'delta_from_baseline': y_mod - y_base
+                })
+
+        # 2) fallback to one-hot tag_* if raw_tags isn’t available
+        elif tag_cols:
+            for col in tag_cols:
+                mod = base.copy()
+                mod[col] = 1 - mod[col].iloc[0]
+                y_mod = pipeline.predict(mod)[0]
+                records.append({
+                    'tag': col[len('tag_'):],
+                    'y_pred': y_mod,
+                    'delta_from_baseline': y_mod - y_base
+                })
+
+        # 3) if no tags at all, return an empty frame with the right columns
+        else:
+            return pd.DataFrame(columns=['tag', 'y_pred', 'delta_from_baseline'])
 
         return (
             pd.DataFrame(records)
               .sort_values('delta_from_baseline', ascending=False)
               .reset_index(drop=True)
         )
+    # ————————————————————————————————————————————————————————————————
 
-    # --- ORIGINAL GRID-BASED INFERENCE ---
+    # --- ORIGINAL GRID-BASED INFERENCE (unchanged) ---
     if today_name is None:
         est = pytz.timezone("US/Eastern")
         today_name = datetime.now(est).strftime("%A")
 
-    # determine categories
     if category_options is None:
         category_options = sorted(df_for_inf["game_category"].dropna().unique().tolist())
         restrict_to_stream_game = True
@@ -377,30 +392,22 @@ def _infer_grid_for_game(
         category_options = list(category_options)
         restrict_to_stream_game = False
 
-    print()
-    print(start_times)
     if start_times is None:
         start_times = _predictor_state['optional_start_times']
-        print()
-        print(start_times)
     if durations is None:
         durations = DEFAULT_DURATIONS_HRS
 
-    # build grid of (game, hour, duration)
     combos = list(itertools.product(category_options, start_times, durations))
     grid = pd.DataFrame(combos, columns=['game_category','start_time_hour','stream_duration'])
 
-    # replicate base row and overwrite dynamic cols
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
     for col in ['game_category','start_time_hour','stream_duration']:
         base_rep[col] = grid[col]
     add_time_features(base_rep)
 
-    # predict
     X_inf = base_rep[features]
     preds  = pipeline.predict(X_inf)
 
-    # confidence as before
     pre    = pipeline.named_steps['pre']
     X_pre  = pre.transform(X_inf)
     model  = pipeline.named_steps['reg']
@@ -417,12 +424,10 @@ def _infer_grid_for_game(
 
     conf = 1.0 / (1.0 + sigma)
 
-    # assemble
     results = X_inf.copy()
     results['y_pred'] = preds
     results['conf']   = conf
 
-    # pull tags from one-hot
     if tag_cols:
         results['tags'] = results[tag_cols].apply(
             lambda row: [c[len('tag_'):] for c,v in row.items() if v==1],
@@ -431,24 +436,17 @@ def _infer_grid_for_game(
     else:
         results['tags'] = [[]] * len(results)
 
-    # legacy game restriction
     if restrict_to_stream_game:
         game_cat = last_row["game_category"]
         results = results[results['game_category'] == game_cat]
-
     if start_hour_filter is not None:
         results = results[results['start_time_hour'] == start_hour_filter]
 
-    # # sort & dedupe
-    # results = results.sort_values('y_pred', ascending=False)
-    # if unique_scores:
-    #     results = results.drop_duplicates(subset=['y_pred'], keep='first')
-
     results = results.sort_values('y_pred', ascending=False)
     results = results.drop_duplicates(
-                subset=['y_pred', 'start_time_hour'],   # keep one row per score‑hour pair
-                keep='first'
-            )
+        subset=['y_pred', 'start_time_hour'],
+        keep='first'
+    )
 
     return results.head(top_n).reset_index(drop=True)
 
