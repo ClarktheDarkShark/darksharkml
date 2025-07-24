@@ -242,6 +242,7 @@ def _train_model(df_daily: pd.DataFrame):
     print(preds)
     return model, model.best_estimator_, df_for_inf, feats, metrics
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PUBLIC TRAIN WRAPPER
 # ─────────────────────────────────────────────────────────────────────────────
@@ -284,6 +285,10 @@ def train_predictor(app, *, log_metrics=True):
     if log_metrics:
         logging.info("Predictor trained: %s", metrics)
     return metrics
+
+
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # INFERENCE HELPERS

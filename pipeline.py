@@ -18,10 +18,26 @@ from sklearn.decomposition         import TruncatedSVD
 # PIPELINE BUILD
 # ─────────────────────────────────────────────────────────────────────────────
 def join_raw_tags(x):
-    # accept ndarray / Series / DF
-    if isinstance(x, (pd.Series, pd.DataFrame)):
-        x = x.squeeze().values
-    return pd.Series([" ".join(t) for t in x])
+    """
+    Accept anything (list, ndarray, Series, DataFrame) that scikit‑learn
+    might send from a ColumnTransformer and return a 1‑D Pandas Series
+    where each element is a single whitespace‑joined tag string.
+    """
+    # 1) Normalise to 1‑D iterable of row values
+    if isinstance(x, pd.DataFrame):
+        x = x.iloc[:, 0]                         # first (and only) column
+    elif isinstance(x, pd.Series):
+        pass                                     # already 1‑D
+    else:
+        # covers ndarray, list, tuple …
+        x = pd.Series(np.asarray(x).ravel())
+
+    # 2) Robust join
+    return x.apply(
+        lambda tags: " ".join(tags)              # list/tuple/array → string
+        if isinstance(tags, (list, tuple, np.ndarray))
+        else ("" if pd.isna(tags) else str(tags))# NaNs / weird values
+    )
 
 
 

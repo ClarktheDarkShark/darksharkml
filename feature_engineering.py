@@ -125,7 +125,7 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
     ]
 
     features = base_feats + hist_cols
-    
+
     if 'raw_tags' in df.columns:
         features = base_feats + hist_cols + ['raw_tags']
     else:
@@ -136,10 +136,6 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
     return df, features, hist_cols
 
 
-# feature_engineering.py
-
-import numpy as np
-import pandas as pd
 
 def drop_outliers(
     df: pd.DataFrame,
