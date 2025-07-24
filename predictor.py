@@ -137,9 +137,6 @@ def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, _ = _prepare_training_frame(df_daily)
     df_daily = drop_outliers(df_daily, method='iqr', factor=1.5)
 
-    # tag_cols = [c for c in df_clean.columns if c.startswith('tag_')]
-    # feats = feats + tag_cols
-
     y = df_clean['total_subscriptions']
     # y = df_clean['net_follower_change']
     X = df_clean[feats]

@@ -171,7 +171,10 @@ def generate_shap_plots(pipeline, X, features):
     pre = pipeline.named_steps['pre']
     # instead of calling pre.get_feature_names_out (which can mis‑dispatch),
     # do this:
-    feature_names = pipeline[:-1].get_feature_names_out(features)
+    try:
+        feature_names = pipeline[:-1].get_feature_names_out(features)
+    except Exception:
+        feature_names = [f"f{i}" for i in range(X_trans.shape[1])]
 
     # 2) transform X to the model’s input space
     #    (we leave the regressor step on the full pipeline, but just use

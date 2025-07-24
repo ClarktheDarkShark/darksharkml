@@ -17,12 +17,13 @@ from sklearn.decomposition         import TruncatedSVD
 # ─────────────────────────────────────────────────────────────────────────────
 # PIPELINE BUILD
 # ─────────────────────────────────────────────────────────────────────────────
-def join_raw_tags(df: pd.DataFrame) -> pd.Series:
-    """
-    Take the df['raw_tags'] column (a List[str]) and 
-    turn it into a single whitespace-joined string per row.
-    """
-    return df['raw_tags'].apply(lambda tags: " ".join(tags))
+def join_raw_tags(x):
+    # accept ndarray / Series / DF
+    if isinstance(x, (pd.Series, pd.DataFrame)):
+        x = x.squeeze().values
+    return pd.Series([" ".join(t) for t in x])
+
+
 
 def _build_pipeline(X: pd.DataFrame):
     bool_cols        = X.select_dtypes(include=['bool']).columns.tolist()
@@ -58,7 +59,9 @@ def _build_pipeline(X: pd.DataFrame):
          ['day_of_week']),
         ('cat', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1),
          categorical_cols),
-    ], remainder='passthrough')
+    ], remainder='drop')
+
+    
 
     # ─────────────────────────────────────────────────────────────────────────────
     # MODELS
