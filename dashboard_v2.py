@@ -436,7 +436,7 @@ def show_feature_insights():
         # if sum() yielded a list, check length; else do numeric sum
         count = len(vals) if isinstance(vals, list) else vals
         if count > 0:
-            legend_tag_opts.append(t[len("tag_"):])
+            legend_tag_opts.append(t[len("raw_tags"):])
     # Union and preserve order: legend_tag_opts first, then top_tags not already included
     print('Yagami Tags:')
     print(legend_tag_opts)
