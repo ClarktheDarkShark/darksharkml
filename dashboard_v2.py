@@ -192,8 +192,9 @@ TEMPLATE_V2 = '''
     }
     /* legend‐used tags get a colored border / background when NOT selected */
     .feature-btn.legend-used {
-        border-color: var(--accent) !important;
-        background: rgba(30,136,229,0.15) !important;
+        background: var(--card);
+        border-color: #ffa726;
+        color: #ffa726;
     }
 
 
@@ -261,25 +262,24 @@ TEMPLATE_V2 = '''
       {% endfor %}
     </div>
     <div class="feature-group">
+    <div class="feature-group">
     <div class="feature-label">Tags:</div><br>
     {% for t in all_tags[:20] %}
         <label>
-        <input type="checkbox"
-                name="tags"
-                id="input_tags_{{t}}"
-                value="{{t}}"
+        <input type="checkbox" name="tags" id="input_tags_{{t}}" value="{{t}}"
                 {% if t in selected_tags %}checked{% endif %}
                 style="display:none;">
         <button type="button"
                 class="feature-btn tag-btn
                         {% if t in selected_tags %} selected{% endif %}
-                        {% if t in legend_tag_opts %} legend-used{% endif %}"
+                        {% if t in legend_tag_opts and t not in selected_tags %} legend-used{% endif %}"
                 onclick="selectFeature('tags','{{t}}',true)">
             {{ t }}
         </button>
         </label>
     {% endfor %}
     </div>
+
 
     <input type="hidden" name="manual" value="1">
     <button type="submit" class="update-btn">Update Prediction</button>
