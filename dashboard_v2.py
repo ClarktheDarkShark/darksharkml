@@ -433,6 +433,9 @@ def show_feature_insights():
         if legend_rows[t].sum() > 0:
             legend_tag_opts.append(t[len('tag_'):])
     # Union and preserve order: legend_tag_opts first, then top_tags not already included
+    print('Yagami Tags:')
+    print(legend_tag_opts)
+    print()
     tag_opts = legend_tag_opts + [t for t in top_tags if t not in legend_tag_opts]
     all_tags = legend_tag_opts + [t for t in all_tags if t not in legend_tag_opts]
 
