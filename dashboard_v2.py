@@ -262,22 +262,25 @@ TEMPLATE_V2 = '''
       {% endfor %}
     </div>
     <div class="feature-group">
-    <div class="feature-group">
     <div class="feature-label">Tags:</div><br>
     {% for t in all_tags[:20] %}
         <label>
-        <input type="checkbox" name="tags" id="input_tags_{{t}}" value="{{t}}"
+            <input type="checkbox"
+                name="tags"
+                id="input_tags_{{t}}"
+                value="{{t}}"
                 {% if t in selected_tags %}checked{% endif %}
                 style="display:none;">
-        <button type="button"
-                class="feature-btn tag-btn
-                        {% if t in selected_tags %} selected{% endif %}
-                        {% if t in legend_tag_opts and t not in selected_tags %} legend-used{% endif %}"
-                onclick="selectFeature('tags','{{t}}',true)">
+            <button type="button"
+                    class="feature-btn tag-btn
+                        {% if t in selected_tags %}selected{% endif %}
+                        {% if t in legend_tag_opts and t not in selected_tags %}legend-used{% endif %}"
+                    data-legend="{{ 'true' if t in legend_tag_opts else 'false' }}"
+                    onclick="selectFeature('tags','{{t}}',true)">
             {{ t }}
-        </button>
+            </button>
         </label>
-    {% endfor %}
+        {% endfor %}
     </div>
 
 
