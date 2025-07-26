@@ -194,6 +194,13 @@ def _train_model(df_daily: pd.DataFrame):
             # 'reg__regressor__l2_regularization':[0.0, 0.1, 1.0, 10.0],
             # },
         ]
+    elif mod == 'svr':
+        # tune the SVM’s C, epsilon and kernel
+        params = {
+            'reg__regressor__C':       [0.1, 1.0, 10.0],
+            'reg__regressor__epsilon': [0.01, 0.1, 0.2],
+            'reg__regressor__kernel':  ['rbf','linear']
+        }
 
 
     scoring = {

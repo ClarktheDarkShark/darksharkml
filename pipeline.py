@@ -6,12 +6,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.experimental import enable_hist_gradient_boosting  # noqa
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.compose import TransformedTargetRegressor
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition         import TruncatedSVD
+from sklearn.svm import SVR
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -114,5 +114,14 @@ def _build_pipeline(X: pd.DataFrame):
     #     random_state=42,
     #     n_jobs=-1
     # )
+
+    svr = SVR(kernel='rbf', C=1.0, epsilon=0.1)
+
+    # ── 2) Wrap in a log‑transform TTR just like you did for RF ───────────────
+    svr = TransformedTargetRegressor(
+        regressor=svr,
+        transformer=FunctionTransformer(np.log1p, np.expm1),
+        check_inverse=False
+    )
 
     return Pipeline([('pre', preprocessor), ('reg', rf)]), 'rf'

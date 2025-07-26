@@ -83,7 +83,8 @@ def _add_historical_rollups(df: pd.DataFrame):
         'raids_received',
         'avg_sentiment_score', 
         'min_sentiment_score', 
-        'max_sentiment_score'
+        'max_sentiment_score',
+        'category_changes'
     ]
     for col in cols:
         df[f"avg_{col}_last_5"] = roll(col)
