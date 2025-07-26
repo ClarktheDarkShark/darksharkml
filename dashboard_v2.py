@@ -478,11 +478,11 @@ def show_feature_insights():
         last_row['start_hour_sin'] = np.sin(2 * np.pi * h / 24)
         last_row['start_hour_cos'] = np.cos(2 * np.pi * h / 24)
         last_row['is_weekend']     = dow in ("Saturday", "Sunday")
-        prev_dates = df[df["stream_name"] == stream_name]["stream_date"].sort_values()
-        if len(prev_dates) >= 2:
-            last = prev_dates.iloc[-1].date()
-            prev = prev_dates.iloc[-2].date()
-            last_row["days_since_previous_stream"] = (last - prev).days
+        # prev_dates = df[df["stream_name"] == stream_name]["stream_date"].sort_values()
+        # if len(prev_dates) >= 2:
+        #     last = prev_dates.iloc[-1].date()
+        #     prev = prev_dates.iloc[-2].date()
+        #     last_row["days_since_previous_stream"] = (last - prev).days
 
         for t in tag_opts:
             last_row['tag_' + t] = 1 if t in selected_tags else 0

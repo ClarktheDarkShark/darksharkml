@@ -126,6 +126,7 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
           .reset_index(level=0, drop=True)
     )
     df, hist_cols = _add_historical_rollups(df)
+    
     base_feats = [
         'day_of_week',
         'start_hour_sin', 'start_hour_cos',
