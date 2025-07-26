@@ -425,7 +425,7 @@ def show_feature_insights():
             legend_tag_opts.append(t[len('tag_'):])
     # Union and preserve order: legend_tag_opts first, then top_tags not already included
     tag_opts = legend_tag_opts + [t for t in top_tags if t not in legend_tag_opts]
-    all_tags = legend_tag_opts + all_tags
+    all_tags = legend_tag_opts + [t for t in all_tags if t not in legend_tag_opts]
 
     # --- Feature selection from query params ---
     selected_game = request.args.get('game', game_opts[0] if game_opts else '')
