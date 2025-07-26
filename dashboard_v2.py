@@ -135,7 +135,7 @@ TEMPLATE_V2 = '''
     }
     .feature-select { margin-bottom: 1.2rem; }
     .feature-group { margin-bottom: 0.7rem; }
-    .feature-label { font-weight: bold; margin-right: 0.7rem; font-size: 0.95rem; }
+    .feature-label { font-weight: bold; margin-right: 0.7rem; font-size: 0.95rem; display: block; margin-bottom: 0.3rem;}
     .feature-btn {
       background: var(--card);
       color: var(--fg);
@@ -222,8 +222,8 @@ TEMPLATE_V2 = '''
 </head>
 
 <body>
-  <h1>Feature Insights for “thelegendyagami”</h1>
-  <h2> Predictions are for: {{today_name}} </h2>
+  <h1>Feature Insights for: TheLegendYagami</h1>
+  <h3> Predictions are for: {{today_name}} </h3>
   
   {% if pred_result %}
     <div class="pred-result">
@@ -243,7 +243,7 @@ TEMPLATE_V2 = '''
 
   <form id="feature-form" class="feature-select" method="get">
     <div class="feature-group">
-      <span class="feature-label">Game:</span>
+      <div class="feature-label">Game:</div>
       {% for g in game_opts %}
         <label>
           <input type="radio" name="game" id="input_game_{{g}}" value="{{g}}" {% if g==selected_game %}checked{% endif %} style="display:none;">
@@ -252,7 +252,7 @@ TEMPLATE_V2 = '''
       {% endfor %}
     </div>
     <div class="feature-group">
-      <span class="feature-label">Start Time:</span>
+      <div class="feature-label">Start Time:</div>
       {% for h in start_opts %}
         <label>
           <input type="radio" name="start_time" id="input_start_time_{{h}}" value="{{h}}" {% if h==selected_start_time %}checked{% endif %} style="display:none;">
@@ -261,7 +261,7 @@ TEMPLATE_V2 = '''
       {% endfor %}
     </div>
     <div class="feature-group">
-    <span class="feature-label">Tags:</span>
+    <div class="feature-label">Tags:</div><br>
     {% for t in all_tags[:20] %}
         <label>
         <input type="checkbox"
