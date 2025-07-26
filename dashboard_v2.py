@@ -428,10 +428,10 @@ def show_feature_insights():
     # Get all tags ever used by thelegendyagami
     tag_cols = [c for c in features if c.startswith('tag_')]
 
-    print(df.columns)
+    # print(df.columns)
     legend_tag_opts = []
     legend_rows = df[df["stream_name"] == stream_name]
-    tag_cols    = [c for c in df.columns if c.startswith("tag_")]
+    tag_cols    = [c for c in df.columns if c.startswith("raw_tags")]
     legend_tag_opts = [t[len("tag_"):]
                     for t in tag_cols
                     if legend_rows[t].sum() > 0]
