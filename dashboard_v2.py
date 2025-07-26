@@ -190,7 +190,13 @@ TEMPLATE_V2 = '''
       font-size: 0.85rem;
       margin-top: 0.7rem;
     }
-    /* SHAP section: keep as is */
+    /* legend‐used tags get a colored border / background when NOT selected */
+    .feature-btn.legend-used:not(.selected) {
+    border-color: var(--accent);
+    /* subtle tinted background to stand out */
+    background: rgba(30,136,229,0.15);
+    }
+
   </style>
   <script>
     function selectFeature(name, value, multi=false) {
@@ -265,13 +271,16 @@ TEMPLATE_V2 = '''
                 {% if t in selected_tags %}checked{% endif %}
                 style="display:none;">
         <button type="button"
-                class="feature-btn tag-btn {% if t in selected_tags %}selected{% endif %}"
+                class="feature-btn tag-btn
+                        {% if t in selected_tags %} selected{% endif %}
+                        {% if t in legend_tag_opts %} legend-used{% endif %}"
                 onclick="selectFeature('tags','{{t}}',true)">
             {{ t }}
         </button>
         </label>
     {% endfor %}
     </div>
+
     <input type="hidden" name="manual" value="1">
     <button type="submit" class="update-btn">Update Prediction</button>
   </form>
@@ -611,5 +620,6 @@ def show_feature_insights():
         tag_insights=tag_insights,
         heatmap_cells=heatmap_cells,
         all_tags=all_tags,
-        shap_plots=shap_plots
+        shap_plots=shap_plots,
+        legend_tag_opts=legend_tag_opts
     )
