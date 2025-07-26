@@ -471,6 +471,19 @@ def show_feature_insights():
         last_row = df[df["stream_name"] == stream_name].iloc[-1].copy()
         last_row['game_category'] = selected_game
         last_row['start_time_hour'] = selected_start_time
+        today = datetime.now(est)
+        dow   = today.strftime("%A")
+        last_row['day_of_week']   = dow
+        h = selected_start_time
+        last_row['start_hour_sin'] = np.sin(2 * np.pi * h / 24)
+        last_row['start_hour_cos'] = np.cos(2 * np.pi * h / 24)
+        last_row['is_weekend']     = dow in ("Saturday", "Sunday")
+        prev_dates = df[df["stream_name"] == stream_name]["stream_date"].sort_values()
+        if len(prev_dates) >= 2:
+            last = prev_dates.iloc[-1].date()
+            prev = prev_dates.iloc[-2].date()
+            last_row["days_since_previous_stream"] = (last - prev).days
+
         for t in tag_opts:
             last_row['tag_' + t] = 1 if t in selected_tags else 0
         X = last_row[features].to_frame().T
