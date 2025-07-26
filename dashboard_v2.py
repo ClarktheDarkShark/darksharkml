@@ -17,6 +17,9 @@ from predictor import (
 # ─────────────────────────────────────────────────────────────────────────────
 dash_v2 = Blueprint('dash_v2', __name__, url_prefix='')  # Remove prefix; route will be accessible at /v2
 
+# simple cache for expensive SHAP plots
+_shap_cache = {"pipe_id": None, "plots": None}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # TEMPLATE: Dark‐Mode, Modern Styling
 # ─────────────────────────────────────────────────────────────────────────────
@@ -632,9 +635,16 @@ def show_feature_insights():
 
     # Generate SHAP plots
     if ready:
-        shap_plots = generate_shap_plots(pipe, df, features)
+        global _shap_cache
+        pipe_id = id(pipe)
+        if _shap_cache["pipe_id"] != pipe_id:
+            _shap_cache = {
+                "pipe_id": pipe_id,
+                "plots": generate_shap_plots(pipe, df, features),
+            }
+        shap_plots = _shap_cache["plots"]
     else:
-        shap_plots = {'summary': '{}', 'dependence': '{}'}
+        shap_plots = {"summary": "{}", "dependence": "{}"}
 
     print("DEBUG: passing shap_plots to template:")
     for name, blob in shap_plots.items():
