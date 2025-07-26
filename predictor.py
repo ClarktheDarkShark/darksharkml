@@ -276,7 +276,8 @@ def train_predictor(app, *, log_metrics=True):
                 .unique()
                 .tolist()
     )
-    _predictor_state["optional_start_times"] = observed_hours
+    # _predictor_state["optional_start_times"] = observed_hours
+    _predictor_state["optional_start_times"] = DEFAULT_START_TIMES
 
     print()
     print('Optional Start Times:')
@@ -443,10 +444,15 @@ def _infer_grid_for_game(
 
     # sort & drop duplicate scores for the same hour
     results = results.sort_values("y_pred", ascending=False)
-    results = results.drop_duplicates(
-        subset=["y_pred"],
-        keep="first"
-    )
+    # results = results.drop_duplicates(
+    #     subset=["y_pred"],
+    #     keep="first"
+    # )
+    if unique_scores:
+        results = results.drop_duplicates(
+            subset=["start_time_hour"],
+            keep="first",
+        )
 
     return results.head(top_n).reset_index(drop=True)
 
