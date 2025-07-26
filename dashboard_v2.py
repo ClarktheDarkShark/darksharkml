@@ -201,23 +201,37 @@ TEMPLATE_V2 = '''
   </style>
   <script>
     function selectFeature(name, value, multi=false) {
-      if (multi) {
+        if (multi) {
         // Toggle tag selection without submitting
         var input = document.getElementById('input_' + name + '_' + value);
         input.checked = !input.checked;
-        var btn = document.querySelector(`button[onclick="selectFeature('${name}','${value}',true)"]`);
-        btn.classList.toggle('selected');
-      } else {
+
+        var btn = document.querySelector(
+            `button[onclick="selectFeature('${name}','${value}',true)"]`
+        );
+        // toggle the selected class
+        var isNowSelected = btn.classList.toggle('selected');
+
+        if (isNowSelected) {
+            // once selected, remove the legend‐used styling
+            btn.classList.remove('legend-used');
+        } else {
+            // if un‐selecting, re‐apply legend if it truly is a legend‐tag
+            if (btn.dataset.legend === 'true') {
+            btn.classList.add('legend-used');
+            }
+        }
+        } else {
         // Radio button behavior without submitting
         var inputs = document.querySelectorAll('input[name="' + name + '"]');
         inputs.forEach(i => {
-          i.checked = (i.value === value);
-          var btn = document.querySelector(`button[onclick="selectFeature('${name}','${i.value}')"]`);
-          btn.classList.toggle('selected', i.value === value);
+            i.checked = (i.value === value);
+            var btn = document.querySelector(`button[onclick="selectFeature('${name}','${i.value}')"]`);
+            btn.classList.toggle('selected', i.value === value);
         });
-      }
+        }
     }
-  </script>
+    </script>
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   {{ shap_plots.js | safe }}
 </head>
