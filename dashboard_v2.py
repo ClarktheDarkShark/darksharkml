@@ -428,10 +428,11 @@ def show_feature_insights():
     # Get all tags ever used by thelegendyagami
     tag_cols = [c for c in features if c.startswith('tag_')]
     legend_tag_opts = []
-    legend_rows = df_for_inf[df_for_inf['stream_name'] == stream_name]
-    for t in tag_cols:
-        if legend_rows[t].sum() > 0:
-            legend_tag_opts.append(t[len('tag_'):])
+    legend_rows = df[df["stream_name"] == stream_name]
+    tag_cols    = [c for c in df.columns if c.startswith("tag_")]
+    legend_tag_opts = [t[len("tag_"):]
+                    for t in tag_cols
+                    if legend_rows[t].sum() > 0]
     # Union and preserve order: legend_tag_opts first, then top_tags not already included
     print('Yagami Tags:')
     print(legend_tag_opts)
