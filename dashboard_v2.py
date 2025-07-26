@@ -427,6 +427,8 @@ def show_feature_insights():
     top_tags = tag_effects_full.sort_values('delta_from_baseline', ascending=False).head(10)['tag'].tolist()
     # Get all tags ever used by thelegendyagami
     tag_cols = [c for c in features if c.startswith('tag_')]
+
+    print(df.columns)
     legend_tag_opts = []
     legend_rows = df[df["stream_name"] == stream_name]
     tag_cols    = [c for c in df.columns if c.startswith("tag_")]
