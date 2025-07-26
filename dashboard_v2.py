@@ -191,11 +191,11 @@ TEMPLATE_V2 = '''
       margin-top: 0.7rem;
     }
     /* legend‐used tags get a colored border / background when NOT selected */
-    .feature-btn.legend-used:not(.selected) {
-    border-color: var(--accent);
-    /* subtle tinted background to stand out */
-    background: rgba(30,136,229,0.15);
+    .feature-btn.legend-used {
+        border-color: var(--accent) !important;
+        background: rgba(30,136,229,0.15) !important;
     }
+
 
   </style>
   <script>
