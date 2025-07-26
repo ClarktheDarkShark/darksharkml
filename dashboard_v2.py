@@ -429,12 +429,14 @@ def show_feature_insights():
     tag_cols = [c for c in features if c.startswith('tag_')]
 
     # print(df.columns)
-    legend_tag_opts = []
     legend_rows = df[df["stream_name"] == stream_name]
-    tag_cols    = [c for c in df.columns if c.startswith("raw_tags")]
-    legend_tag_opts = [t[len("tag_"):]
-                    for t in tag_cols
-                    if legend_rows[t].sum() > 0]
+    legend_tag_opts = []
+    for t in tag_cols:
+        vals = legend_rows[t].sum()
+        # if sum() yielded a list, check length; else do numeric sum
+        count = len(vals) if isinstance(vals, list) else vals
+        if count > 0:
+            legend_tag_opts.append(t[len("tag_"):])
     # Union and preserve order: legend_tag_opts first, then top_tags not already included
     print('Yagami Tags:')
     print(legend_tag_opts)
