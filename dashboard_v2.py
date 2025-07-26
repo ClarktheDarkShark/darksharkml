@@ -325,7 +325,8 @@ TEMPLATE_V2 = '''
       </tr>
     </thead>
     <tbody>
-      {% for row in tag_insights %}
+
+      {% for row in tag_insights[:20] %}
       <tr>
         <td>{{ row.tags }}</td>
         <td>{{ row.delta }}</td>
