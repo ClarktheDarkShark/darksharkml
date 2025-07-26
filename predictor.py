@@ -42,7 +42,7 @@ from feature_engineering import _prepare_training_frame, drop_outliers
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
-ROLL_N = 5
+ROLL_WINDOWS = [1, 3, 10]
 DEFAULT_START_TIMES   = list(range(24))     # 0..23 hours
 DEFAULT_DURATIONS_HRS = list(range(2, 13))  # 2..12 hours
 _ARTIFACT_PATH = os.path.join(os.path.dirname(__file__), "predictor_artifacts.joblib")

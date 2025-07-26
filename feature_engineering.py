@@ -5,7 +5,7 @@ import pandas as pd
 from typing import Optional, List
 # import matplotlib.pyplot as plt
 
-ROLL_N = 5
+ROLL_WINDOWS = [1, 3, 10]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURE ENGINEERING
@@ -69,8 +69,8 @@ def _compute_is_weekend(series: pd.Series) -> pd.Series:
 def _add_historical_rollups(df: pd.DataFrame):
     df = df.copy()
     grouped = df.groupby('stream_name', group_keys=False)
-    def roll(col):
-        return grouped[col].apply(lambda x: x.shift(1).rolling(ROLL_N, min_periods=1).mean())
+    def roll(col, n):
+        return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).mean())
     cols = [
         'total_subscriptions',
         'net_follower_change',
@@ -86,9 +86,12 @@ def _add_historical_rollups(df: pd.DataFrame):
         'max_sentiment_score',
         'category_changes'
     ]
+    hist_cols = []
     for col in cols:
-        df[f"avg_{col}_last_5"] = roll(col)
-    hist_cols = [c for c in df.columns if c.endswith("_last_5")]
+        for n in ROLL_WINDOWS:
+            new_col = f"avg_{col}_last_{n}"
+            df[new_col] = roll(col, n)
+            hist_cols.append(new_col)
     for c in hist_cols:
         df[c] = grouped[c].apply(lambda x: x.ffill().fillna(0) if len(x)>1 else x.fillna(0))
         first = grouped[c].head(1).index
