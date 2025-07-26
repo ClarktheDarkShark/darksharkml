@@ -474,6 +474,7 @@ def show_feature_insights():
         for t in tag_opts:
             last_row['tag_' + t] = 1 if t in selected_tags else 0
         X = last_row[features].to_frame().T
+        print("X for selected features:", X)
         y_pred = pipe.predict(X)[0]
         try:
             pre = pipe.named_steps['pre']
