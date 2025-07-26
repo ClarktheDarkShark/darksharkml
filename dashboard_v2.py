@@ -426,21 +426,17 @@ def show_feature_insights():
     tag_effects_full = tag_effects_full[abs(tag_effects_full['delta_from_baseline']) > 0.01]
     top_tags = tag_effects_full.sort_values('delta_from_baseline', ascending=False).head(10)['tag'].tolist()
     # Get all tags ever used by thelegendyagami
-    tag_cols = [c for c in features if c.startswith('raw_tags')]
 
     # print(df.columns)
     legend_rows = df[df["stream_name"] == stream_name]
-    legend_tag_opts = []
-    for t in tag_cols:
-        vals = legend_rows[t].sum()
-        # if sum() yielded a list, check length; else do numeric sum
-        count = len(vals) if isinstance(vals, list) else vals
-        if count > 0:
-            legend_tag_opts.append(t[len("raw_tags"):])
-    # Union and preserve order: legend_tag_opts first, then top_tags not already included
-    print('Yagami Tags:')
-    print(legend_tag_opts)
-    print()
+    legend_tag_opts: list[str] = []
+    for tags in legend_rows["raw_tags"].dropna():
+        # raw_tags is a list of strings
+        for t in tags:
+            if t not in legend_tag_opts:
+                legend_tag_opts.append(t)
+
+    # now union with the top_tags
     tag_opts = legend_tag_opts + [t for t in top_tags if t not in legend_tag_opts]
     all_tags = legend_tag_opts + [t for t in all_tags if t not in legend_tag_opts]
 
