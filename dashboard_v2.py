@@ -421,10 +421,7 @@ def show_feature_insights():
     est = pytz.timezone("US/Eastern")
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
-
     baseline_row = None
-    if ready:
-        baseline_row = _get_last_row_for_stream(pipe, df_for_inf, stream_name)
 
     all_tags: list[str] = []
     if ready:
@@ -444,6 +441,9 @@ def show_feature_insights():
         selected_stream = default_stream
     stream_name = selected_stream
     today_name = datetime.now(est).strftime("%A")
+
+    if ready:
+        baseline_row = _get_last_row_for_stream(pipe, df_for_inf, stream_name)
 
     # --- Limit games to top 10 by predicted subs + all games played by the selected stream ---
     df = df_for_inf.copy()
