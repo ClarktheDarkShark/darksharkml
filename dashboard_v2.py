@@ -240,7 +240,7 @@ TEMPLATE_V2 = '''
 </head>
 
 <body>
-  <h1>Feature Insights for: TheLegendYagami</h1>
+  <h1>Feature Insights for: {{ selected_stream }}</h1>
   <h3> Predictions are for: {{today_name}} </h3>
   
   {% if pred_result %}
@@ -260,6 +260,15 @@ TEMPLATE_V2 = '''
 
 
   <form id="feature-form" class="feature-select" method="get">
+    <div class="feature-group">
+      <div class="feature-label">Streamer:</div>
+      {% for s in stream_opts %}
+        <label>
+          <input type="radio" name="stream" id="input_stream_{{s}}" value="{{s}}" {% if s==selected_stream %}checked{% endif %} style="display:none;">
+          <button type="button" class="feature-btn {% if s==selected_stream %}selected{% endif %}" onclick="selectFeature('stream','{{s}}')">{{s}}</button>
+        </label>
+      {% endfor %}
+    </div>
     <div class="feature-group">
       <div class="feature-label">Game:</div>
       {% for g in game_opts %}
@@ -318,6 +327,16 @@ TEMPLATE_V2 = '''
       </div>
     {% endfor %}
   </div>
+  <table>
+    <thead>
+      <tr><th>Feature</th><th>Value</th></tr>
+    </thead>
+    <tbody>
+      {% for row in heatmap_features %}
+      <tr><td>{{ row.feature }}</td><td>{{ row.value }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
   <div class="note">
     Red = lowest, Blue = highest predicted subs. Hover for details.
   </div>
@@ -410,13 +429,26 @@ def show_feature_insights():
         vectorizer = tag_pipe.named_steps["vectorize"]
         all_tags = vectorizer.get_feature_names_out().tolist()
 
-    stream_name = "thelegendyagami"
-    today_name = datetime.now(est).strftime("%A") 
+    default_stream = "thelegendyagami"
+    stream_opts = (
+        df_for_inf["stream_name"].value_counts().head(5).index.tolist()
+    )
+    if default_stream not in stream_opts:
+        stream_opts.append(default_stream)
+    selected_stream = request.args.get("stream", default_stream)
+    if selected_stream not in df_for_inf["stream_name"].unique():
+        selected_stream = default_stream
+    stream_name = selected_stream
+    today_name = datetime.now(est).strftime("%A")
 
-    # --- Limit games to top 10 by predicted subs + all games played by thelegendyagami ---
+    baseline_row = None
+    if ready:
+        baseline_row = _get_last_row_for_stream(df_for_inf, stream_name)
+
+    # --- Limit games to top 10 by predicted subs + all games played by the selected stream ---
     df = df_for_inf.copy()
     df['y_pred'] = pipe.predict(df[features]) if ready else 0
-    # Get all games played by thelegendyagami
+    # Get all games played by this streamer
     legend_games = df[df['stream_name'] == stream_name]['game_category'].unique().tolist()
     # Get top 10 games by predicted subs
     game_scores = (
@@ -445,7 +477,7 @@ def show_feature_insights():
     )
     tag_effects_full = tag_effects_full[abs(tag_effects_full['delta_from_baseline']) > 0.01]
     top_tags = tag_effects_full.sort_values('delta_from_baseline', ascending=False).head(10)['tag'].tolist()
-    # Get all tags ever used by thelegendyagami
+    # Get all tags ever used by this streamer
 
     # print(df.columns)
     legend_rows = df[df["stream_name"] == stream_name]
@@ -471,7 +503,7 @@ def show_feature_insights():
 
     pred_result = None
     if manual and ready:
-        last_row = df[df["stream_name"] == stream_name].iloc[-1].copy()
+        last_row = baseline_row.copy() if baseline_row is not None else None
         last_row['game_category'] = selected_game
         last_row['start_time_hour'] = selected_start_time
         today = datetime.now(est)
@@ -633,6 +665,24 @@ def show_feature_insights():
         for _, row in time_df.iterrows()
     ]
 
+    # Static features used for each hour prediction
+    heatmap_features = []
+    if baseline_row is not None:
+        heatmap_features.append({
+            'feature': 'Duration',
+            'value': f"{int(baseline_row['stream_duration'])}h"
+        })
+        heatmap_features.append({
+            'feature': 'Category',
+            'value': baseline_row['game_category']
+        })
+        tags = baseline_row.get('raw_tags', [])
+        for tag in tags[:3]:
+            heatmap_features.append({
+                'feature': 'Tag',
+                'value': tag
+            })
+
     # Generate SHAP plots
     if ready:
         global _shap_cache
@@ -654,9 +704,11 @@ def show_feature_insights():
         TEMPLATE_V2,
         today_name=today_name,
         selected_date=datetime.now().strftime("%Y-%m-%d"),
+        stream_opts=stream_opts,
         game_opts=game_opts,
         start_opts=start_opts,
         tag_opts=tag_opts,
+        selected_stream=selected_stream,
         selected_game=selected_game,
         selected_start_time=selected_start_time,
         selected_tags=selected_tags,
@@ -664,6 +716,7 @@ def show_feature_insights():
         game_insights=game_insights,
         tag_insights=tag_insights,
         heatmap_cells=heatmap_cells,
+        heatmap_features=heatmap_features,
         all_tags=all_tags,
         shap_plots=shap_plots,
         legend_tag_opts=legend_tag_opts
