@@ -422,6 +422,10 @@ def show_feature_insights():
     pipe, df_for_inf, features, cat_opts, start_opts, dur_opts, metrics = get_predictor_artifacts()
     ready = pipe is not None and df_for_inf is not None
 
+    baseline_row = None
+    if ready:
+        baseline_row = _get_last_row_for_stream(pipe, df_for_inf, stream_name)
+
     all_tags: list[str] = []
     if ready:
         pre = pipe.named_steps["pre"]
@@ -499,7 +503,7 @@ def show_feature_insights():
 
     pred_result = None
     if manual and ready:
-        last_row = baseline_row.copy() if baseline_row is not None else None
+        last_row = baseline_row.copy()
         last_row['game_category'] = selected_game
         last_row['start_time_hour'] = selected_start_time
         today = datetime.now(est)
