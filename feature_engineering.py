@@ -148,6 +148,9 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
 
     df['game_category'] = df['game_category'].str.lower()
 
+    print('Features:')
+    for f in features:
+        print(f)
     return df, features, hist_cols
 
 
