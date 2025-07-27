@@ -443,7 +443,7 @@ def show_feature_insights():
     today_name = datetime.now(est).strftime("%A")
 
     if ready:
-        baseline_row = _get_last_row_for_stream(pipe, df_for_inf, stream_name)
+        baseline_row = _get_last_row_for_stream(df_for_inf, stream_name)
 
     # --- Limit games to top 10 by predicted subs + all games played by the selected stream ---
     df = df_for_inf.copy()
