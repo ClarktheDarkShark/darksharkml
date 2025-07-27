@@ -329,19 +329,11 @@ TEMPLATE_V2 = '''
   </div>
   <table>
     <thead>
-<<<<<<< HEAD
       <tr><th>Feature</th><th>Value</th><th>Score</th></tr>
     </thead>
     <tbody>
       {% for row in feature_scores %}
       <tr><td>{{ row.feature }}</td><td>{{ row.value }}</td><td>{{ row.score }}</td></tr>
-=======
-      <tr><th>Feature</th><th>Value</th></tr>
-    </thead>
-    <tbody>
-      {% for row in heatmap_features %}
-      <tr><td>{{ row.feature }}</td><td>{{ row.value }}</td></tr>
->>>>>>> origin/4daun2-codex/add-stream-name-selector-and-feature-scores-table
       {% endfor %}
     </tbody>
   </table>
@@ -449,13 +441,6 @@ def show_feature_insights():
     stream_name = selected_stream
     today_name = datetime.now(est).strftime("%A")
 
-<<<<<<< HEAD
-=======
-    baseline_row = None
-    if ready:
-        baseline_row = _get_last_row_for_stream(df_for_inf, stream_name)
-
->>>>>>> origin/4daun2-codex/add-stream-name-selector-and-feature-scores-table
     # --- Limit games to top 10 by predicted subs + all games played by the selected stream ---
     df = df_for_inf.copy()
     df['y_pred'] = pipe.predict(df[features]) if ready else 0
@@ -676,7 +661,6 @@ def show_feature_insights():
         for _, row in time_df.iterrows()
     ]
 
-<<<<<<< HEAD
     # Feature score table for the heat map section
     duration_scores_df = (
         time_predictions.groupby('stream_duration')['y_pred']
@@ -707,25 +691,6 @@ def show_feature_insights():
             'value': r['tag'],
             'score': f"{r['delta_from_baseline']:.2f}"
         })
-=======
-    # Static features used for each hour prediction
-    heatmap_features = []
-    if baseline_row is not None:
-        heatmap_features.append({
-            'feature': 'Duration',
-            'value': f"{int(baseline_row['stream_duration'])}h"
-        })
-        heatmap_features.append({
-            'feature': 'Category',
-            'value': baseline_row['game_category']
-        })
-        tags = baseline_row.get('raw_tags', [])
-        for tag in tags[:3]:
-            heatmap_features.append({
-                'feature': 'Tag',
-                'value': tag
-            })
->>>>>>> origin/4daun2-codex/add-stream-name-selector-and-feature-scores-table
 
     # Generate SHAP plots
     if ready:
@@ -760,11 +725,7 @@ def show_feature_insights():
         game_insights=game_insights,
         tag_insights=tag_insights,
         heatmap_cells=heatmap_cells,
-<<<<<<< HEAD
         feature_scores=feature_scores,
-=======
-        heatmap_features=heatmap_features,
->>>>>>> origin/4daun2-codex/add-stream-name-selector-and-feature-scores-table
         all_tags=all_tags,
         shap_plots=shap_plots,
         legend_tag_opts=legend_tag_opts
