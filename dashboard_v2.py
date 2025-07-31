@@ -642,24 +642,43 @@ def compute_heatmap_cells(time_df: pd.DataFrame) -> list[dict]:
     return cells
 
 
-def compute_feature_scores(time_preds: pd.DataFrame, selected_game: str, top_n_tags=3):
-    out = []
-    # by duration
-    dur = (
-        time_preds.groupby('stream_duration')['y_pred']
-                  .mean()
-                  .round(2)
-                  .reset_index()
+def compute_feature_scores(time_preds, selected_game, top_n_tags=3):
+    feature_scores = []
+
+    # Duration
+    duration_scores = (
+        time_preds
+        .groupby('stream_duration')['y_pred']
+        .mean()
+        .round(2)
+        .reset_index()
     )
-    for r in dur.itertuples():
-        out.append({'feature':'Duration','value':f"{int(r.stream_duration)}h",'score':f"{r.y_pred:.2f}"})
-    # category
-    out.append({'feature':'Category','value':selected_game,'score':f"{time_preds.y_pred.mean():.2f}"})
-    # top tags
-    top = time_preds.nlargest(top_n_tags,'delta_from_baseline')
-    for r in top.itertuples():
-        out.append({'feature':'Tag','value':r.tag,'score':f"{r.delta_from_baseline:.2f}"})
-    return out
+    for _, r in duration_scores.iterrows():
+        feature_scores.append({
+            'feature': 'Duration',
+            'value': f"{int(r.stream_duration)}h",
+            'score': f"{r.y_pred:.2f}"
+        })
+
+    # Category
+    feature_scores.append({
+        'feature': 'Category',
+        'value': selected_game,
+        'score': f"{time_preds['y_pred'].mean():.2f}"
+    })
+
+    # Tags—only if we actually have deltas
+    if 'delta_from_baseline' in time_preds.columns:
+        top = time_preds.nlargest(top_n_tags, 'delta_from_baseline')
+        for _, r in top.iterrows():
+            feature_scores.append({
+                'feature': 'Tag',
+                'value': r.get('tag', '<unknown>'),
+                'score': f"{r['delta_from_baseline']:.2f}"
+            })
+
+    return feature_scores
+
 
 
 def get_shap_blocks(pipeline, df_pred, features):
