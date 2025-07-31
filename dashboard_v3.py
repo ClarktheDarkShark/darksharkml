@@ -9,6 +9,8 @@ from predictor import (
     _infer_grid_for_game,
     _get_last_row_for_stream,
 )
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', 0) 
 
 dash_v3 = Blueprint("dash_v3", __name__, url_prefix="")  # route at /v3
 TZ = pytz.timezone("US/Eastern")
@@ -106,10 +108,9 @@ def show_feature_insights_v3():
             top_n=3,
             unique_scores=True,
         )
-        print("\nInf Grid:")
-        # show every column, no truncation
-        print(df.to_string(index=False))
         print()
+        print('Inf Grid')
+        print(df)
         return df.to_dict("records")
 
     top3_subs      = _top3(pipe_sub)
