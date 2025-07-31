@@ -1,154 +1,204 @@
-# dashboard_v3.py — drop-in blueprint
-
 import itertools
-from datetime import datetime
 from flask import Blueprint, render_template_string, request
-import numpy as np, pandas as pd, pytz
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import pytz
 
 from predictor import (
     get_predictor_artifacts,
-    _get_last_row_for_stream,
     _infer_grid_for_game,
+    _get_last_row_for_stream,
 )
 
-dash_v3 = Blueprint("dash_v3", __name__, url_prefix="")   # route at /v3
-tz_EST  = pytz.timezone("US/Eastern")
+# ─────────────────────────────────────────────────────────────────────────────
+# FLASK APP & BLUEPRINT SETUP
+# ─────────────────────────────────────────────────────────────────────────────
+dash_v3 = Blueprint('dash_v3', __name__, url_prefix='')  # mount at /
+
+# simple cache for expensive SHAP plots
+_shap_cache = {"pipe_id": None, "plots": None}
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HTML template
+# TEMPLATE: Dark-Mode, Modern Styling (extended)
 # ─────────────────────────────────────────────────────────────────────────────
-TEMPLATE = """
-<!doctype html><html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Stream AI · {{ selected_stream }}</title>
-<style>
-:root{--bg:#111;--card:#1d1d1d;--fg:#eaeaea;--muted:#888;--acc:#1e88e5;--acc-d:#1565c0;--radius:8px}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;font-size:15px}
-h1{font-size:1.4rem;margin:.6rem 0 .2rem}
-h2{font-size:1.1rem;margin:1.1rem 0 .4rem}
-.card{background:var(--card);border-radius:var(--radius);padding:.75rem 1rem;box-shadow:0 2px 8px rgba(0,0,0,.45)}
-.grid{display:grid;gap:12px}
-@media(min-width:700px){.grid-3{grid-template-columns:repeat(3,1fr)}}
-table{width:100%;border-collapse:collapse;font-size:.9rem}
-th,td{padding:.45rem .6rem;text-align:center}
-th{background:#1a1a1a;font-weight:600}
-tbody tr:nth-child(even){background:#181818}
-tbody tr:hover{background:#222}
-.badge{display:inline-block;padding:.15rem .55rem;font-size:.72rem;border-radius:5px;background:var(--acc);color:#fff}
-</style>
-</head><body>
-<h1>AI Stream Insights · {{ today_long }}</h1>
+TEMPLATE_V3 = '''
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" width="device-width, initial-scale=1">
+  <title>Feature Insights Dashboard</title>
+  <style>
+    /* same CSS as your TEMPLATE_V2… */
+  </style>
+  <script>
+    /* same selectFeature + Plotly scripts as TEMPLATE_V2… */
+  </script>
 
-<!-- summary -->
-<div class="grid grid-3">
-  <div class="card">
-    <h2>Best Combo<br><span style="font-weight:400">(Subs)</span></h2>
-    {% if best_combo %}
-      <p><span class="badge">{{ best_combo.score }}</span> predicted subs</p>
-      <p>{{ best_combo.game }} • {{ "%02d:00"|format(best_combo.hour) }} • {{ best_combo.dur }}h</p>
-      <p style="font-size:.8rem">Tags: {{ best_combo.tags|join(", ") or "None" }}</p>
-    {% else %}No data{% endif %}
-  </div>
-  <div class="card">
-    <h2>Model MAE</h2>
-    <p>Subs: {{ metrics_sub.model_mae|round(2) }}</p>
-    <p>Follows: {{ metrics_fol.model_mae|round(2) }}</p>
-  </div>
-  <div class="card">
-    <h2>Context</h2>
-    <p>Streamer: <strong>{{ selected_stream }}</strong></p>
-    <p>#Features: {{ features|length }}</p>
-  </div>
-</div>
+</head>
+<body>
+  <h1>Feature Insights for: {{ selected_stream }}</h1>
+  <h3>Predictions for: {{ today_name }}</h3>
+  <p class="note"><strong>Features used:</strong> {{ features|join(', ') }}</p>
 
-<h2>Top-3 Combos</h2>
-{% for lbl, rows in [("Subs", top3_subs), ("Followers", top3_fol), ("Viewers", top3_view)] %}
-<h3>{{ lbl }}</h3>
-<table class="card">
-  <thead><tr><th>Game</th><th>Start</th><th>Dur</th><th>{{ lbl }}</th><th>Conf.</th></tr></thead>
-  <tbody>{% for r in rows %}
-    <tr><td>{{ r.game_category }}</td><td>{{ "%02d:00"|format(r.start_time_hour) }}</td>
-        <td>{{ r.stream_duration }}h</td><td>{{ r.y_pred|round(2) }}</td><td>{{ r.conf|round(2) }}</td></tr>
-  {% endfor %}</tbody>
-</table>
-{% endfor %}
-</body></html>
-"""
+  {% if pred_result %}
+    <div class="pred-result">
+      <strong>PREDICTION FOR SELECTED FEATURES</strong>
+      <div class="pred-value">
+        {{ pred_result.y_pred }} subscribers
+      </div>
+      <div class="pred-details">
+        <b>Game:</b> {{ selected_game }}<br>
+        <b>Start Time:</b> {{ selected_start_time }}:00<br>
+        <b>Tags:</b> {{ selected_tags|join(', ') }}<br>
+        <b>Confidence:</b> {{ pred_result.conf }}
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- ─── Feature Selection Form ─────────────────────────────────────────────── -->
+  <!-- unchanged from TEMPLATE_V2… -->
+
+  <!-- ─── TOP-3 RECOMMENDATIONS ─────────────────────────────────────────────── -->
+  <h2>Top Recommendations</h2>
+
+  <h3>Subscriptions</h3>
+  <table>
+    <thead>
+      <tr><th>Game</th><th>Start</th><th>Duration</th><th>Subs</th><th>Conf</th></tr>
+    </thead>
+    <tbody>
+      {% for r in top3_subs %}
+      <tr>
+        <td>{{ r.game_category }}</td>
+        <td>{{ "%02d:00"|format(r.start_time_hour) }}</td>
+        <td>{{ r.stream_duration }}h</td>
+        <td>{{ r.y_pred|round(2) }}</td>
+        <td>{{ r.conf|round(2) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Follower Growth</h3>
+  <table>
+    <thead>
+      <tr><th>Game</th><th>Start</th><th>Duration</th><th>Followers</th><th>Conf</th></tr>
+    </thead>
+    <tbody>
+      {% for r in top3_followers %}
+      <tr>
+        <td>{{ r.game_category }}</td>
+        <td>{{ "%02d:00"|format(r.start_time_hour) }}</td>
+        <td>{{ r.stream_duration }}h</td>
+        <td>{{ r.y_pred|round(2) }}</td>
+        <td>{{ r.conf|round(2) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Viewers</h3>
+  <table>
+    <thead>
+      <tr><th>Game</th><th>Start</th><th>Duration</th><th>Viewers</th><th>Conf</th></tr>
+    </thead>
+    <tbody>
+      {% for r in top3_viewers %}
+      <tr>
+        <td>{{ r.game_category }}</td>
+        <td>{{ "%02d:00"|format(r.start_time_hour) }}</td>
+        <td>{{ r.stream_duration }}h</td>
+        <td>{{ r.y_pred|round(2) }}</td>
+        <td>{{ r.conf|round(2) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- ─── Start Time Heatmap, Feature Scores, Game Comparison,
+         Tag Effects, and SHAP Sections ──────────────────────────────────── -->
+  <!-- reuse the HTML from TEMPLATE_V2 for those… -->
+
+</body>
+</html>
+'''
 
 # ─────────────────────────────────────────────────────────────────────────────
-# helpers 
+# Route
 # ─────────────────────────────────────────────────────────────────────────────
-def _row(baseline, game, hour, dur, tags, feats):
-    r = baseline.copy()
-    r["game_category"], r["start_time_hour"], r["stream_duration"] = game, hour, dur
-    dow = datetime.now(tz_EST).strftime("%A")
-    r["day_of_week"] = dow
-    r["start_hour_sin"], r["start_hour_cos"] = np.sin(2*np.pi*hour/24), np.cos(2*np.pi*hour/24)
-    r["is_weekend"] = dow in ("Saturday","Sunday")
-    for t in tags: r[f"tag_{t}"] = 1
-    return pd.DataFrame([r])[feats]
+@dash_v3.route('/v3', methods=['GET'])
+def show_feature_insights_v3():
+    # 1) load artifacts
+    pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = get_predictor_artifacts()
+    ready = bool(pipelines and df_inf is not None)
 
-def best_combo(pipe, baseline, games, hours, durs, tags, feats):
-    best = None
-    for game in games:
-        for hour in hours:
-            for dur in durs:
-                y0 = pipe.predict(_row(baseline, game, hour, dur, [], feats))[0]
-                if best is None or y0 > best["score"]:
-                    best = dict(score=y0, game=game, hour=hour, dur=dur, tags=())
-                # quick heuristic: test adding each tag individually
-                for t in tags:
-                    y = pipe.predict(_row(baseline, game, hour, dur, [t], feats))[0]
-                    if y > best["score"]:
-                        best = dict(score=y, game=game, hour=hour, dur=dur, tags=(t,))
-    return best
+    # select stream
+    selected_stream = request.args.get('stream', df_inf['stream_name'].mode()[0])
+    selected_stream = 'thelegendyagami'
+    if selected_stream not in df_inf['stream_name'].unique():
+        selected_stream = df_inf['stream_name'].mode()[0]
 
-def top3_grid(pipe, df_inf, feats, stream, games, hours, durs, base_tags):
-    df = _infer_grid_for_game(
-        pipe, df_inf, feats,
-        stream_name=stream,
-        override_tags=base_tags,
-        start_times=hours,
-        durations=durs,
-        category_options=games,
-        top_n=3,
-        unique_scores=True,
-    )
-    return df.to_dict("records")
+    # pick pipelines
+    pipe_sub = pipelines[0]
+    pipe_fol = pipelines[1] if len(pipelines)>1 else pipelines[0]
+    pipe_view= pipelines[2] if len(pipelines)>2 else pipelines[0]
 
-# ─────────────────────────────────────────────────────────────────────────────
-# route
-# ─────────────────────────────────────────────────────────────────────────────
-@dash_v3.route("/v3", methods=["GET"])
-def v3():
-    pipes, df_inf, feats, _, hours, durs, metrics = get_predictor_artifacts()
-    if not pipes: return "Model not loaded", 503
+    # date & tz
+    tz = pytz.timezone("US/Eastern")
+    today_dt = datetime.now(tz)
+    today_name = today_dt.strftime("%A, %B %d, %Y")
 
-    stream = request.args.get("stream") or df_inf["stream_name"].mode()[0]
-    if stream not in df_inf["stream_name"].unique():
-        stream = df_inf["stream_name"].mode()[0]
+    # baseline & legend history
+    baseline    = _get_last_row_for_stream(df_inf, selected_stream)
+    legend_games= df_inf.loc[df_inf['stream_name']==selected_stream,'game_category'].unique().tolist()
+    legend_tags = sorted({
+        tag
+        for tags in df_inf.loc[df_inf['stream_name']==selected_stream,'raw_tags'].dropna()
+        for tag in tags
+    })
 
-    baseline = _get_last_row_for_stream(df_inf, stream)
-    games    = df_inf.loc[df_inf.stream_name==stream, "game_category"].unique().tolist()
-    tags     = sorted({t for lst in df_inf.loc[df_inf.stream_name==stream, "raw_tags"].dropna() for t in lst})
+    # 2) Top-3 combos for each metric via _infer_grid_for_game
+    def top3(pipe):
+        df_top = _infer_grid_for_game(
+            pipe, df_inf, features,
+            stream_name=selected_stream,
+            override_tags=legend_tags,
+            start_times=start_opts,
+            durations=dur_opts,
+            category_options=legend_games,
+            top_n=3,
+            unique_scores=True
+        )
+        return df_top.to_dict('records')
 
-    pipe_sub, pipe_fol, pipe_view = pipes[0], pipes[min(1,len(pipes)-1)], pipes[min(2,len(pipes)-1)]
-    metrics_sub, metrics_fol      = metrics[0], metrics[min(1,len(metrics)-1)]
+    top3_subs      = top3(pipe_sub)
+    top3_followers = top3(pipe_fol)
+    top3_viewers   = top3(pipe_view)
 
-    best_sub_combo = best_combo(pipe_sub, baseline, games, hours, durs, tags, feats)
-    top3_sub = top3_grid(pipe_sub, df_inf, feats, stream, games, hours, durs, tags)
-    top3_fol = top3_grid(pipe_fol, df_inf, feats, stream, games, hours, durs, tags)
-    top3_view= top3_grid(pipe_view, df_inf, feats, stream, games, hours, durs, tags)
+    # 3) Existing sections
+    # … heatmap_cells, feature_scores, game_insights, tag_insights, shap_plots
+    # copy your compute logic from v2 here unchanged …
 
     return render_template_string(
-        TEMPLATE,
-        today_long=datetime.now(tz_EST).strftime("%A · %d %b %Y"),
-        selected_stream=stream,
-        features=feats,
-        metrics_sub=metrics_sub,
-        metrics_fol=metrics_fol,
-        best_combo=best_sub_combo,
-        top3_subs = top3_sub,
-        top3_fol  = top3_fol,
-        top3_view = top3_view,
+        TEMPLATE_V3,
+        selected_stream=selected_stream,
+        today_name=today_name,
+        features=features,
+        # form options
+        stream_opts=sorted(df_inf['stream_name'].unique()),
+        game_opts=legend_games,
+        start_opts=start_opts,
+        all_tags=legend_tags,
+        legend_tag_opts=legend_tags,
+        # prediction inputs
+        selected_game=request.args.get('game', legend_games[0] if legend_games else ''),
+        selected_start_time=int(request.args.get('start_time', start_opts[0])),
+        selected_tags=request.args.getlist('tags'),
+        pred_result={},                # reuse your manual_prediction result if you want
+        # top-3 recommendations
+        top3_subs=top3_subs,
+        top3_followers=top3_followers,
+        top3_viewers=top3_viewers,
     )
