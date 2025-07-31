@@ -105,7 +105,7 @@ def _add_historical_rollups(df: pd.DataFrame):
 def _prepare_training_frame(df_daily: pd.DataFrame):
     df = _drop_unused_columns(df_daily)
     df = df[df['stream_duration'] >= 1]
-    df = df.dropna()
+    # df = df.dropna()
 
     df["stream_date"] = pd.to_datetime(df["stream_date"])
     if "stream_start_time" in df:
@@ -129,6 +129,8 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
           .reset_index(level=0, drop=True)
     )
     df, hist_cols = _add_historical_rollups(df)
+
+    df = df.dropna(subset=['total_subscriptions', 'net_follower_change'] + hist_cols)
     
     base_feats = [
         'day_of_week',

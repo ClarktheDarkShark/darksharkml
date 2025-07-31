@@ -32,6 +32,7 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, make_scorer
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 from sklearn.compose import TransformedTargetRegressor
+from sklearn.pipeline import Pipeline
 import pytz
 
 from db import db
@@ -52,6 +53,7 @@ _ARTIFACT_PATH = os.path.join(os.path.dirname(__file__), "predictor_artifacts.jo
 # ─────────────────────────────────────────────────────────────────────────────
 _predictor_state = {
     "pipeline": None,                      # best_estimator_ (fitted Pipeline)
+    "pipeline2": None,
     "model": None,                         # full GridSearchCV wrapper
     "df_for_inf": None,                    # cleaned feature frame incl stream_name
     "features": None,                      # feature column list
@@ -60,6 +62,7 @@ _predictor_state = {
     "stream_duration_opts": DEFAULT_DURATIONS_HRS,
     "trained_on": None,                    # UTC datetime
     "metrics": {},                         # dict of training metrics
+    "metrics2": {}
 }
 
 
@@ -67,7 +70,7 @@ _predictor_state = {
 # ATTEMPT TO LOAD PRE‐TRAINED ARTIFACTS (skip on‐dyno training)
 # ─────────────────────────────────────────────────────────────────────────────
 if os.path.exists(_ARTIFACT_PATH):
-    # print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
     try:
         data = joblib.load(_ARTIFACT_PATH)
         df_inf = data.get("df_for_inf")
@@ -76,6 +79,7 @@ if os.path.exists(_ARTIFACT_PATH):
             df_inf.columns = df_inf.columns.map(str)
         _predictor_state.update({
             "pipeline":                    data.get("pipeline"),
+            "pipeline2":                   data.get("pipeline2"),
             "model":                       None,  # drop full GridSearchCV at runtime
             "df_for_inf":                  df_inf,
             "features":                    data.get("features"),
@@ -84,6 +88,7 @@ if os.path.exists(_ARTIFACT_PATH):
             "stream_duration_opts":        data.get("stream_duration_opts", DEFAULT_DURATIONS_HRS),
             "trained_on":                  data.get("trained_on", None),
             "metrics":                     data.get("metrics", {}),
+            "metrics2":                    data.get("metrics2", {}),
         })
         logging.info("Loaded predictor artifacts from %s", _ARTIFACT_PATH)
     except Exception as e:
@@ -134,113 +139,134 @@ def _load_daily_stats_df(app):
 # TRAINING (GridSearchCV)
 # ─────────────────────────────────────────────────────────────────────────────
 def _train_model(df_daily: pd.DataFrame):
-    df_clean, feats, _ = _prepare_training_frame(df_daily)
+    df_clean, feats, hist_cols = _prepare_training_frame(df_daily)
+    df_clean = df_clean.dropna()
     df_daily = drop_outliers(df_daily, method='iqr', factor=1.5)
 
-    y = df_clean['total_subscriptions']
-    # y = df_clean['net_follower_change']
-    X = df_clean[feats]
-    cutoff = df_clean["stream_date"].quantile(0.8)
-    train_mask = df_clean["stream_date"] < cutoff
-    X_train, X_test = X[train_mask], X[~train_mask]
-    y_train, y_test = y[train_mask], y[~train_mask]
+    # nan_any = df_clean[df_clean.isna().any(axis=1)]
+    # print("Rows with at least one NaN:")
+    # print(nan_any)
+    # exit()
 
-    # import matplotlib.pyplot as plt
-    # plt.hist(y_train, bins=20, alpha=0.6, label='train')
-    # plt.hist(y_test,  bins=20, alpha=0.6, label='test')
-    # plt.legend(); plt.title("Subscriptions: train vs test")
-    # plt.show()
+    # target_list = ['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change']
 
-    # plot_features(feats, X_train, y_train, train_mask, df_clean)
+    target_list = ['total_subscriptions', 'net_follower_change']
+    pipe_list = []
+    # print(df_clean["net_follower_change"])
+    for t in target_list:
+        y = df_clean[t]
+        # y = df_clean['net_follower_change']
+        X = df_clean[feats]
+        cutoff = df_clean["stream_date"].quantile(0.8)
+        train_mask = df_clean["stream_date"] < cutoff
+        X_train, X_test = X[train_mask], X[~train_mask]
+        y_train, y_test = y[train_mask], y[~train_mask]
+
+        # import matplotlib.pyplot as plt
+        # plt.hist(y_train, bins=20, alpha=0.6, label='train')
+        # plt.hist(y_test,  bins=20, alpha=0.6, label='test')
+        # plt.legend(); plt.title("Subscriptions: train vs test")
+        # plt.show()
+
+        # plot_features(feats, X_train, y_train, train_mask, df_clean)
 
 
-    pipeline, mod = _build_pipeline(X_train)
-    
-    tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
+        pipeline, mod = _build_pipeline(X_train)
+        # if t == "net_follower_change":
+        #     # pipeline.named_steps['reg'] is the TransformedTargetRegressor
+        #     ttr = pipeline.named_steps["reg"]
+        #     raw_reg = ttr.regressor_
+        #     # rebuild exactly the same pipeline but swap in the raw regressor
+        #     pipeline = Pipeline([*pipeline.steps[:-1], ("reg", raw_reg)])
+        
+        tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
 
-    if mod == 'rf':
+        if mod == 'rf':
 
-        # # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
-        # pipeline, _ = _build_pipeline(X_train)
-        # for p in sorted(pipeline.get_params().keys()):
-        #     if p.startswith("reg__"):
-        #         print(p)
-        params = {
-            "reg__regressor__n_estimators":    [200, 600, 1000],
-            "reg__regressor__min_samples_leaf":[3, 5, 10, 50],
-            "reg__regressor__min_samples_split":[5, 10, 50],
-            "reg__regressor__max_features":    ['sqrt', 0.5, .8, 1.0],
-            "reg__regressor__max_depth": [None, 5, 10]
-        }
-    elif mod == 'hgb':
-        # # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
-        # pipeline, _ = _build_pipeline(X_train)
-        # for p in sorted(pipeline.get_params().keys()):
-        #     if p.startswith("reg__"):
-        #         print(p)
-        params = [
-            {
-                'reg__loss': ['poisson'],
-                'reg__learning_rate': [0.05, 0.1, 0.2],
-                'reg__max_leaf_nodes': [31, 63, 80],
-                'reg__l2_regularization': [0.1, 1.0, 10.0]
+            # # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
+            # pipeline, _ = _build_pipeline(X_train)
+            # for p in sorted(pipeline.get_params().keys()):
+            #     if p.startswith("reg__"):
+            #         print(p)
+            params = {
+                "reg__regressor__n_estimators":    [200, 600, 1000],
+                "reg__regressor__min_samples_leaf":[3, 5, 10, 50],
+                "reg__regressor__min_samples_split":[5, 10, 50],
+                "reg__regressor__max_features":    ['sqrt', 0.5, .8, 1.0],
+                "reg__regressor__max_depth": [None, 5, 10]
             }
-            # Tweedie‐loss grid (if your sklearn version supports it)
-            # {
-            # 'reg__regressor__loss': ['tweedie'],
-            # 'reg__regressor__power':          [1.1, 1.5, 1.9],
-            # 'reg__regressor__learning_rate':  [0.01, 0.05, 0.1],
-            # 'reg__regressor__max_leaf_nodes': [15, 31, 63],
-            # 'reg__regressor__l2_regularization':[0.0, 0.1, 1.0, 10.0],
-            # },
-        ]
-    elif mod == 'svr':
-        # tune the SVM’s C, epsilon and kernel
-        params = {
-            'reg__regressor__C':       [0.1, 1.0, 10.0],
-            'reg__regressor__epsilon': [0.01, 0.1, 0.2],
-            'reg__regressor__kernel':  ['rbf','linear']
+        elif mod == 'hgb':
+            # # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
+            # pipeline, _ = _build_pipeline(X_train)
+            # for p in sorted(pipeline.get_params().keys()):
+            #     if p.startswith("reg__"):
+            #         print(p)
+            params = [
+                {
+                    'reg__loss': ['poisson'],
+                    'reg__learning_rate': [0.05, 0.1, 0.2],
+                    'reg__max_leaf_nodes': [31, 63, 80],
+                    'reg__l2_regularization': [0.1, 1.0, 10.0]
+                }
+                # Tweedie‐loss grid (if your sklearn version supports it)
+                # {
+                # 'reg__regressor__loss': ['tweedie'],
+                # 'reg__regressor__power':          [1.1, 1.5, 1.9],
+                # 'reg__regressor__learning_rate':  [0.01, 0.05, 0.1],
+                # 'reg__regressor__max_leaf_nodes': [15, 31, 63],
+                # 'reg__regressor__l2_regularization':[0.0, 0.1, 1.0, 10.0],
+                # },
+            ]
+        elif mod == 'svr':
+            # tune the SVM’s C, epsilon and kernel
+            params = {
+                'reg__regressor__C':       [0.1, 1.0, 10.0],
+                'reg__regressor__epsilon': [0.01, 0.1, 0.2],
+                'reg__regressor__kernel':  ['rbf','linear']
+            }
+
+
+        scoring = {
+            'R2': 'r2',
+            'MAE': make_scorer(mean_absolute_error, greater_is_better=False),
+            'RMSE': 'neg_root_mean_squared_error',
         }
+        model = GridSearchCV(
+            estimator=pipeline,
+            param_grid=params,
+            cv=tscv,
+            scoring=scoring,
+            refit='MAE',        # pick the metric you care about; MAE more stable
+            n_jobs=-1,
+            verbose=1,
+            error_score='raise',  # fail fast if something breaks
+        )
+        model.fit(X_train, y_train)
+
+        
+        test_r2      = model.score(X_test, y_test)
+        y_pred_test  = model.predict(X_test)
+        const_base   = np.full_like(y_test, y_train.mean())
+        metrics = {
+            "best_params": model.best_params_,
+            "cv_r2":       model.best_score_,
+            "test_r2":     test_r2,
+            "const_mae":   float(mean_absolute_error(y_test, const_base)),
+            "model_mae":   float(mean_absolute_error(y_test, y_pred_test)),
+        }
+        print()
+        print()
+        for m in metrics:
+            print(m, metrics[m])
+
+        df_for_inf = df_clean[['stream_name'] + feats].copy()
+
+        preds = model.predict(X_test)
+        print(preds)
+        pipe_list.append((model.best_estimator_, metrics))
 
 
-    scoring = {
-        'R2': 'r2',
-        'MAE': make_scorer(mean_absolute_error, greater_is_better=False),
-        'RMSE': 'neg_root_mean_squared_error',
-    }
-    model = GridSearchCV(
-        estimator=pipeline,
-        param_grid=params,
-        cv=tscv,
-        scoring=scoring,
-        refit='MAE',        # pick the metric you care about; MAE more stable
-        n_jobs=-1,
-        verbose=1,
-        error_score='raise',  # fail fast if something breaks
-    )
-    model.fit(X_train, y_train)
-
-    
-    test_r2      = model.score(X_test, y_test)
-    y_pred_test  = model.predict(X_test)
-    const_base   = np.full_like(y_test, y_train.mean())
-    metrics = {
-        "best_params": model.best_params_,
-        "cv_r2":       model.best_score_,
-        "test_r2":     test_r2,
-        "const_mae":   float(mean_absolute_error(y_test, const_base)),
-        "model_mae":   float(mean_absolute_error(y_test, y_pred_test)),
-    }
-    print()
-    print()
-    for m in metrics:
-        print(m, metrics[m])
-
-    df_for_inf = df_clean[['stream_name'] + feats].copy()
-
-    preds = model.predict(X_test)
-    # print(preds)
-    return model, model.best_estimator_, df_for_inf, feats, metrics
+    return model, pipe_list, df_for_inf, feats
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -254,18 +280,20 @@ def train_predictor(app, *, log_metrics=True):
     # add_time_features(df_daily)
 
     # 3) train on that enriched frame
-    model, pipe, df_inf, feats, metrics = _train_model(df_daily)
+    model, pipe_list, df_inf, feats = _train_model(df_daily)
 
     # 4) update state (no more DEFAULT_START_TIMES)
     _predictor_state.update({
-        "pipeline":                 pipe,
+        "pipeline":                 pipe_list[0][0],
+        "pipeline2":                pipe_list[1][0],
         "model":                    model,
         "df_for_inf":               df_inf,
         "features":                 feats,
         "stream_category_options_inf": sorted(df_inf["game_category"].unique().tolist()),
         "stream_duration_opts":     DEFAULT_DURATIONS_HRS,
         "trained_on":               datetime.utcnow(),
-        "metrics":                  metrics,
+        "metrics":                  pipe_list[0][1],
+        "metrics2":                 pipe_list[1][1]
     })
 
     # 5) capture **only** the hours we actually saw
@@ -284,8 +312,9 @@ def train_predictor(app, *, log_metrics=True):
     print(_predictor_state["optional_start_times"])
 
     if log_metrics:
-        logging.info("Predictor trained: %s", metrics)
-    return metrics
+        logging.info("Predictor trained for subs: %s", pipe_list[0][1])
+        logging.info("Predictor trained for follows: %s", pipe_list[1][1])
+    return pipe_list[0][1]
 
 
 
@@ -472,12 +501,14 @@ def get_predictor_artifacts():
     
     return (
 _predictor_state["pipeline"],
+_predictor_state["pipeline2"],
 _predictor_state["df_for_inf"],
 _predictor_state["features"],
 _predictor_state["stream_category_options_inf"],
 _predictor_state["optional_start_times"],
 _predictor_state["stream_duration_opts"],
 _predictor_state["metrics"],
+_predictor_state["metrics2"],
     )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -499,6 +530,7 @@ def predgame(
     _ensure_trained(app)
     return _infer_grid_for_game(
         _predictor_state["pipeline"],
+        _predictor_state["pipeline2"],
         _predictor_state["df_for_inf"],
         _predictor_state["features"],
         stream_name,
@@ -517,6 +549,7 @@ def predhour(
     _ensure_trained(app)
     return _infer_grid_for_game(
         _predictor_state["pipeline"],
+        _predictor_state["pipeline2"],
         _predictor_state["df_for_inf"],
         _predictor_state["features"],
         stream_name,

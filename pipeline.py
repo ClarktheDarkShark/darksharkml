@@ -14,6 +14,12 @@ from sklearn.decomposition         import TruncatedSVD
 from sklearn.svm import SVR
 
 
+def signed_log1p(y):
+    return np.sign(y) * np.log1p(np.abs(y))
+
+def signed_expm1(y):
+    return np.sign(y) * (np.expm1(np.abs(y)))
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PIPELINE BUILD
 # ─────────────────────────────────────────────────────────────────────────────
@@ -79,7 +85,7 @@ def _build_pipeline(X: pd.DataFrame):
     ], remainder='drop')
 
     
-
+    
     # ─────────────────────────────────────────────────────────────────────────────
     # MODELS
     # ─────────────────────────────────────────────────────────────────────────────
@@ -93,7 +99,7 @@ def _build_pipeline(X: pd.DataFrame):
         n_jobs=-1
     )
     rf  = TransformedTargetRegressor(rf,
-                  transformer=FunctionTransformer(np.log1p, np.expm1))
+                  transformer=FunctionTransformer(signed_log1p, signed_expm1))
 
     hgb = HistGradientBoostingRegressor(
         early_stopping=False,
@@ -120,7 +126,7 @@ def _build_pipeline(X: pd.DataFrame):
     # ── 2) Wrap in a log‑transform TTR just like you did for RF ───────────────
     svr = TransformedTargetRegressor(
         regressor=svr,
-        transformer=FunctionTransformer(np.log1p, np.expm1),
+        transformer=FunctionTransformer(signed_log1p, signed_expm1),
         check_inverse=False
     )
 
