@@ -136,6 +136,7 @@ def show_feature_insights_v3():
 
     # select stream
     selected_stream = request.args.get('stream', df_inf['stream_name'].mode()[0])
+    selected_stream = 'thelegendyagami'
     if selected_stream not in df_inf['stream_name'].unique():
         selected_stream = df_inf['stream_name'].mode()[0]
 
