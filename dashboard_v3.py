@@ -95,7 +95,9 @@ def show_feature_insights_v3():
     # 5) helper: top-3 grid for one metric
     def _top3(pipe):
         df = _infer_grid_for_game(
-            pipe, df_inf, feats,
+            pipe, 
+            df_inf, 
+            feats,
             stream_name=sel_stream,
             override_tags=legend_tags,
             start_times=start_opts,
@@ -104,6 +106,10 @@ def show_feature_insights_v3():
             top_n=3,
             unique_scores=True,
         )
+        print("\nInf Grid:")
+        # show every column, no truncation
+        print(df.to_string(index=False))
+        print()
         return df.to_dict("records")
 
     top3_subs      = _top3(pipe_sub)
