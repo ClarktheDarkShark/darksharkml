@@ -75,7 +75,8 @@ def show_feature_insights_v3():
         return "Model not ready", 503
 
     # 2) choose streamer (query param or default to most frequent)
-    sel_stream = request.args.get("stream") or df_inf["stream_name"].mode()[0]
+    # sel_stream = request.args.get("stream") or df_inf["stream_name"].mode()[0]
+    sel_stream = 'thelegendyagami'
     if sel_stream not in df_inf["stream_name"].unique():
         sel_stream = df_inf["stream_name"].mode()[0]
 
