@@ -423,13 +423,14 @@ def load_artifacts():
     return get_predictor_artifacts()
 
 
-def extract_all_tags(pipeline) -> list[str]:
+def extract_all_tags(pipelines) -> list[str]:
     """
-    Pull the vectorizer’s vocabulary out of the pipeline.
+    Pull the vectorizer’s vocabulary out of the FIRST pipeline in the list.
     """
-    pre = pipeline.named_steps['pre']
+    first_pipe = pipelines[0]
+    pre      = first_pipe.named_steps['pre']
     tag_pipe = pre.named_transformers_['tags']
-    vect = tag_pipe.named_steps['vectorize']
+    vect     = tag_pipe.named_steps['vectorize']
     return vect.get_feature_names_out().tolist()
 
 
@@ -698,12 +699,18 @@ def get_shap_blocks(pipeline, df_pred, features):
 @dash_v2.route('/v2', methods=['GET'])
 def show_feature_insights():
     # 1) load
-    pipe, pipe2, df_inf, features, cat_opts, start_opts, dur_opts, metrics, metrics2 = load_artifacts()
-    ready = pipe is not None and df_inf is not None
+    pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
+    ready = bool(pipelines and df_inf is not None)
     today = datetime.now(pytz.timezone("US/Eastern")).strftime("%A")
 
+      # pick which model to show (default=0 for first pipeline)
+    model_idx = int(request.args.get('model', 0))
+    model_idx = max(0, min(model_idx, len(pipelines)-1))
+    pipe    = pipelines[model_idx]
+    metrics = metrics_list[model_idx]
+
     # 2) all possible tags
-    all_tags = extract_all_tags(pipe) if ready else []
+    all_tags = extract_all_tags(pipelines) if ready else []
 
     # 3) which stream?
     selected_stream = select_stream(request, df_inf)

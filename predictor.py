@@ -52,17 +52,15 @@ _ARTIFACT_PATH = os.path.join(os.path.dirname(__file__), "predictor_artifacts.jo
 # INTERNAL STATE
 # ─────────────────────────────────────────────────────────────────────────────
 _predictor_state = {
-    "pipeline": None,                      # best_estimator_ (fitted Pipeline)
-    "pipeline2": None,
+    "pipelines": [],          # will hold N best_estimator_ pipelines
+    "metrics_list": [],       # will hold N corresponding metrics dicts
     "model": None,                         # full GridSearchCV wrapper
     "df_for_inf": None,                    # cleaned feature frame incl stream_name
     "features": None,                      # feature column list
     "stream_category_options_inf": None,   # sorted list of known categories
     "optional_start_times": DEFAULT_START_TIMES,
     "stream_duration_opts": DEFAULT_DURATIONS_HRS,
-    "trained_on": None,                    # UTC datetime
-    "metrics": {},                         # dict of training metrics
-    "metrics2": {}
+    "trained_on": None                    # UTC datetime
 }
 
 
@@ -70,7 +68,7 @@ _predictor_state = {
 # ATTEMPT TO LOAD PRE‐TRAINED ARTIFACTS (skip on‐dyno training)
 # ─────────────────────────────────────────────────────────────────────────────
 if os.path.exists(_ARTIFACT_PATH):
-    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+    # print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
     try:
         data = joblib.load(_ARTIFACT_PATH)
         df_inf = data.get("df_for_inf")
@@ -78,8 +76,8 @@ if os.path.exists(_ARTIFACT_PATH):
         if isinstance(df_inf, pd.DataFrame):
             df_inf.columns = df_inf.columns.map(str)
         _predictor_state.update({
-            "pipeline":                    data.get("pipeline"),
-            "pipeline2":                   data.get("pipeline2"),
+            "pipelines":                   data.get("pipelines", []),
+            "metrics_list":                data.get("metrics_list", []),
             "model":                       None,  # drop full GridSearchCV at runtime
             "df_for_inf":                  df_inf,
             "features":                    data.get("features"),
@@ -87,8 +85,6 @@ if os.path.exists(_ARTIFACT_PATH):
             "optional_start_times":        data.get("optional_start_times", DEFAULT_START_TIMES),
             "stream_duration_opts":        data.get("stream_duration_opts", DEFAULT_DURATIONS_HRS),
             "trained_on":                  data.get("trained_on", None),
-            "metrics":                     data.get("metrics", {}),
-            "metrics2":                    data.get("metrics2", {}),
         })
         logging.info("Loaded predictor artifacts from %s", _ARTIFACT_PATH)
     except Exception as e:
@@ -143,14 +139,10 @@ def _train_model(df_daily: pd.DataFrame):
     df_clean = df_clean.dropna()
     df_daily = drop_outliers(df_daily, method='iqr', factor=1.5)
 
-    # nan_any = df_clean[df_clean.isna().any(axis=1)]
-    # print("Rows with at least one NaN:")
-    # print(nan_any)
-    # exit()
 
     # target_list = ['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change']
 
-    target_list = ['total_subscriptions', 'net_follower_change']
+    target_list = ['total_subscriptions', 'net_follower_change', 'avg_concurrent_viewers']
     pipe_list = []
     # print(df_clean["net_follower_change"])
     for t in target_list:
@@ -256,6 +248,7 @@ def _train_model(df_daily: pd.DataFrame):
         }
         print()
         print()
+        print('For target:', t)
         for m in metrics:
             print(m, metrics[m])
 
@@ -283,9 +276,10 @@ def train_predictor(app, *, log_metrics=True):
     model, pipe_list, df_inf, feats = _train_model(df_daily)
 
     # 4) update state (no more DEFAULT_START_TIMES)
+    pipelines, metrics_list = zip(*pipe_list)
     _predictor_state.update({
-        "pipeline":                 pipe_list[0][0],
-        "pipeline2":                pipe_list[1][0],
+        "pipelines":     list(pipelines),
+        "metrics_list":  list(metrics_list),
         "model":                    model,
         "df_for_inf":               df_inf,
         "features":                 feats,
@@ -500,15 +494,13 @@ def get_predictor_artifacts():
     """
     
     return (
-_predictor_state["pipeline"],
-_predictor_state["pipeline2"],
+_predictor_state["pipelines"],
 _predictor_state["df_for_inf"],
 _predictor_state["features"],
 _predictor_state["stream_category_options_inf"],
 _predictor_state["optional_start_times"],
 _predictor_state["stream_duration_opts"],
-_predictor_state["metrics"],
-_predictor_state["metrics2"],
+_predictor_state["metrics_list"],
     )
 
 # ─────────────────────────────────────────────────────────────────────────────

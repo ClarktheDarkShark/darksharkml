@@ -3,6 +3,7 @@ from flask import Flask
 from db import db
 from dashboard_predictions import dash_preds
 from dashboard_v2 import dash_v2
+from dashboard_v3 import dash_v3
 
 def create_app():
     app = Flask(__name__)
@@ -18,6 +19,8 @@ def create_app():
     db.init_app(app)
     app.register_blueprint(dash_preds)
     app.register_blueprint(dash_v2)  # Remove prefix; route will be accessible at /v2
+    
+    app.register_blueprint(dash_v3)
 
     with app.app_context():
         # create tables if you’re not running migrations

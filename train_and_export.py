@@ -10,19 +10,17 @@ if __name__ == "__main__":
     train_predictor(app)
 
     # 3) Grab everything out of memory
-    pipeline, pipeline2, df_for_inf, features, cat_opts, start_times, dur_opts, metrics, metrics2 = get_predictor_artifacts()
+    pipeline, df_for_inf, features, cat_opts, start_times, dur_opts, metrics = get_predictor_artifacts()
 
     # 4) Persist to disk (choose your filename)
     joblib.dump({
-        "pipeline": pipeline,
-        "pipeline2": pipeline2,
+        "pipelines": pipeline,
         "df_for_inf": df_for_inf,
         "features": features,
         "stream_category_options_inf": cat_opts,
         "optional_start_times": start_times,
         "stream_duration_opts": dur_opts,
-        "metrics": metrics,
-        "metrics2": metrics2,
+        "metrics_list": metrics,
     }, "predictor_artifacts.joblib")
 
     print(start_times)

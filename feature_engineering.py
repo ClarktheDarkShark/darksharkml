@@ -5,7 +5,8 @@ import pandas as pd
 from typing import Optional, List
 # import matplotlib.pyplot as plt
 
-ROLL_WINDOWS = [1, 3, 10]
+# ROLL_WINDOWS = [1, 3, 10]
+ROLL_WINDOWS = [1, 7]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURE ENGINEERING
