@@ -1,12 +1,19 @@
 import logging
+import warnings
+from pandas.errors import PerformanceWarning
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*highly fragmented.*",
+    category=PerformanceWarning
+)
 
 import numpy as np
 import pandas as pd
 from typing import Optional, List
 # import matplotlib.pyplot as plt
 
-# ROLL_WINDOWS = [1, 3, 10]
-ROLL_WINDOWS = [1, 7]
+ROLL_WINDOWS = [1, 3, 7, 14]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURE ENGINEERING
@@ -72,6 +79,15 @@ def _add_historical_rollups(df: pd.DataFrame):
     grouped = df.groupby('stream_name', group_keys=False)
     def roll(col, n):
         return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).mean())
+    def roll_mean(col, n):
+        return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).mean())
+    def roll_std(col, n):
+        return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).std())
+    def roll_min(col, n):
+        return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).min())
+    def roll_max(col, n):
+        return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).max())
+
     cols = [
         'total_subscriptions',
         'net_follower_change',
@@ -90,13 +106,24 @@ def _add_historical_rollups(df: pd.DataFrame):
     hist_cols = []
     for col in cols:
         for n in ROLL_WINDOWS:
-            new_col = f"avg_{col}_last_{n}"
-            df[new_col] = roll(col, n)
-            hist_cols.append(new_col)
+            mean_col = f"avg_{col}_last_{n}"
+            std_col  = f"std_{col}_last_{n}"
+            min_col  = f"min_{col}_last_{n}"
+            max_col  = f"max_{col}_last_{n}"
+
+            df[mean_col] = roll_mean(col, n).fillna(0)
+            df[std_col]  = roll_std(col, n).fillna(0)
+            df[min_col]  = roll_min(col, n).fillna(0)
+            df[max_col]  = roll_max(col, n).fillna(0)
+
+            hist_cols.extend([mean_col, std_col, min_col, max_col])
+
+    # forward-fill and ensure the very first value is zero
     for c in hist_cols:
-        df[c] = grouped[c].apply(lambda x: x.ffill().fillna(0) if len(x)>1 else x.fillna(0))
-        first = grouped[c].head(1).index
-        df.loc[first, c] = 0
+        df[c] = grouped[c].apply(lambda x: x.ffill().fillna(0) if len(x) > 1 else x.fillna(0))
+        first_idx = grouped[c].head(1).index
+        df.loc[first_idx, c] = 0
+
     return df, hist_cols
 
 
@@ -151,9 +178,9 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
 
     df['game_category'] = df['game_category'].str.lower()
 
-    print('Features:')
-    for f in features:
-        print(f)
+    # print('Features:')
+    # for f in features:
+    #     print(f)
     return df, features, hist_cols
 
 

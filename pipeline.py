@@ -1,10 +1,19 @@
 # pipeline.py
 
+import warnings
+
+# Ignore all UserWarnings whose message starts with "n_quantiles"
+warnings.filterwarnings(
+    "ignore",
+    message=r"n_quantiles .* greater than the total number of samples",
+    category=UserWarning
+)
+
 import pandas as pd
 import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
+from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler, StandardScaler
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.compose import TransformedTargetRegressor
@@ -12,6 +21,7 @@ from sklearn.preprocessing import FunctionTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition         import TruncatedSVD
 from sklearn.svm import SVR
+from sklearn.preprocessing import QuantileTransformer
 
 
 def signed_log1p(y):
@@ -57,21 +67,29 @@ def _build_pipeline(X: pd.DataFrame):
     categorical_cols = [c for c in X.select_dtypes(include=['object','category']).columns
                         if c!='day_of_week' and c!='raw_tags'] 
     
-    print(X)
+    # print(X)
     
-    # 2) Build a tag‑vectorizing pipeline:
+    # # 2) Build a tag‑vectorizing pipeline:
+    # tag_pipeline = Pipeline([
+    #     ('join',       FunctionTransformer(join_raw_tags, validate=False)),
+    #     ('vectorize',  CountVectorizer(
+    #                        max_features=200,
+    #                        token_pattern=r"(?u)\b\w+\b"
+    #                    )),
+    #     ('svd',        TruncatedSVD(n_components=16, random_state=42)),
+    # ])
+
     tag_pipeline = Pipeline([
         ('join',       FunctionTransformer(join_raw_tags, validate=False)),
-        ('vectorize',  CountVectorizer(
-                           max_features=200,
-                           token_pattern=r"(?u)\b\w+\b"
-                       )),
-        ('svd',        TruncatedSVD(n_components=16, random_state=42)),
+        ('vectorize',  CountVectorizer(max_features=2000,
+                                    ngram_range=(1,2),
+                                    token_pattern=r"(?u)\b\w+\b"))
+        # no SVD
     ])
 
     ordered_days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
     preprocessor = ColumnTransformer(transformers=[
-        ('num', MinMaxScaler(), numeric_cols),
+        ('num', StandardScaler(), numeric_cols),
         ('tags', tag_pipeline,        ['raw_tags']),
         ('bool','passthrough', bool_cols),
         ('dow', OrdinalEncoder(
@@ -121,13 +139,24 @@ def _build_pipeline(X: pd.DataFrame):
     #     n_jobs=-1
     # )
 
-    svr = SVR(kernel='rbf', C=1.0, epsilon=0.1)
+    # svr = SVR(kernel='rbf', C=1.0, epsilon=0.1)
 
-    # ── 2) Wrap in a log‑transform TTR just like you did for RF ───────────────
+    # # ── 2) Wrap in a log‑transform TTR just like you did for RF ───────────────
+    # svr = TransformedTargetRegressor(
+    #     regressor=svr,
+    #     transformer=FunctionTransformer(signed_log1p, signed_expm1),
+    #     check_inverse=False
+    # )
+
+    qt = FunctionTransformer(
+        QuantileTransformer(output_distribution='normal', random_state=42).fit_transform,
+        inverse_func=None,   # let the regressor predict in gaussian space
+        validate=False)
+
     svr = TransformedTargetRegressor(
-        regressor=svr,
-        transformer=FunctionTransformer(signed_log1p, signed_expm1),
-        check_inverse=False
-    )
+            regressor=SVR(),
+            transformer=qt,
+            check_inverse=False)
 
     return Pipeline([('pre', preprocessor), ('reg', rf)]), 'rf'
+    # return Pipeline([('pre', preprocessor), ('reg', svr)]), 'svr'

@@ -9,8 +9,6 @@ from predictor import (
     _infer_grid_for_game,
     _get_last_row_for_stream,
 )
-pd.set_option('display.max_columns', None)
-pd.set_option('display.width', 0) 
 
 dash_v3 = Blueprint("dash_v3", __name__, url_prefix="")  # route at /v3
 TZ = pytz.timezone("US/Eastern")
@@ -67,6 +65,43 @@ tbody tr:hover{background:#222}
 <!-- where you can paste heat-map / SHAP blocks from v2 -->
 </body></html>
 """
+
+def make_feature_row_with_raw_tags(
+    baseline: pd.Series,
+    game: str,
+    hour: int,
+    dur: int,
+    tags: list[str],
+    features: list[str]
+) -> pd.DataFrame:
+    """
+    Build a single-row DataFrame with exactly your pipeline’s features,
+    putting the list of tags into the raw_tags column so your vectorizer
+    sees them.
+    """
+    # 1) take every feature *except* raw_tags from baseline
+    non_tag_feats = [f for f in features if f != "raw_tags"]
+    row = baseline[non_tag_feats].copy()
+
+    # 2) overwrite dynamic fields
+    row["game_category"]   = game
+    row["start_time_hour"] = hour
+    row["stream_duration"] = dur
+
+    # recompute day‐of‐week & cyclic time
+    now = datetime.now(TZ)
+    dow = now.strftime("%A")
+    row["day_of_week"]     = dow
+    row["start_hour_sin"]  = np.sin(2 * np.pi * hour / 24)
+    row["start_hour_cos"]  = np.cos(2 * np.pi * hour / 24)
+    row["is_weekend"]      = dow in ("Saturday", "Sunday")
+
+    # 3) put your list of tags into a one-element list-cell
+    row["raw_tags"] = [tags]
+
+    # 4) return as DataFrame with exactly the pipeline features
+    return row.to_frame().T[features]
+
 
 # ───────────────────────────────────────── route ────────────────────────────
 @dash_v3.route("/v3", methods=["GET"])

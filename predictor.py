@@ -137,7 +137,7 @@ def _load_daily_stats_df(app):
 def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, hist_cols = _prepare_training_frame(df_daily)
     df_clean = df_clean.dropna()
-    df_daily = drop_outliers(df_daily, method='iqr', factor=1.5)
+    # df_clean = drop_outliers(df_clean, cols=['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change'] ,method='iqr', factor=1.5)
 
 
     # target_list = ['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change']
@@ -171,7 +171,8 @@ def _train_model(df_daily: pd.DataFrame):
         #     # rebuild exactly the same pipeline but swap in the raw regressor
         #     pipeline = Pipeline([*pipeline.steps[:-1], ("reg", raw_reg)])
         
-        tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
+        # tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
+        tscv = TimeSeriesSplit(n_splits=5, gap=0)
 
         if mod == 'rf':
 
@@ -181,12 +182,13 @@ def _train_model(df_daily: pd.DataFrame):
             #     if p.startswith("reg__"):
             #         print(p)
             params = {
-                "reg__regressor__n_estimators":    [200, 600, 1000],
-                "reg__regressor__min_samples_leaf":[3, 5, 10, 50],
-                "reg__regressor__min_samples_split":[5, 10, 50],
-                "reg__regressor__max_features":    ['sqrt', 0.5, .8, 1.0],
-                "reg__regressor__max_depth": [None, 5, 10]
-            }
+                'reg__regressor__n_estimators':    [500, 1000, 5000],
+                'reg__regressor__max_depth':       [5, 10, 15],
+                'reg__regressor__max_features':    ['sqrt', 'log2', 0.8],
+                'reg__regressor__min_samples_split': [5, 10],
+                'reg__regressor__min_samples_leaf':  [2, 5, 10],
+                'reg__regressor__bootstrap':       [True, False]
+                }
         elif mod == 'hgb':
             # # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
             # pipeline, _ = _build_pipeline(X_train)
@@ -212,9 +214,11 @@ def _train_model(df_daily: pd.DataFrame):
         elif mod == 'svr':
             # tune the SVM’s C, epsilon and kernel
             params = {
-                'reg__regressor__C':       [0.1, 1.0, 10.0],
-                'reg__regressor__epsilon': [0.01, 0.1, 0.2],
-                'reg__regressor__kernel':  ['rbf','linear']
+                'reg__regressor__kernel':  ['rbf', 'poly', 'sigmoid'],
+                'reg__regressor__C':       [0.1, 1, 10, 100],
+                'reg__regressor__gamma':   ['scale', 'auto', 1e-3, 1e-2, 1e-1],
+                'reg__regressor__epsilon': [0.01, 0.1, 0.5],
+                'reg__regressor__degree':  [2, 3]          # only used if kernel='poly'
             }
 
 
@@ -236,8 +240,8 @@ def _train_model(df_daily: pd.DataFrame):
         model.fit(X_train, y_train)
 
         
-        test_r2      = model.score(X_test, y_test)
-        y_pred_test  = model.predict(X_test)
+        test_r2      = model.best_estimator_.score(X_test, y_test)
+        y_pred_test  = model.best_estimator_.predict(X_test)
         const_base   = np.full_like(y_test, y_train.mean())
         metrics = {
             "best_params": model.best_params_,
@@ -252,10 +256,25 @@ def _train_model(df_daily: pd.DataFrame):
         for m in metrics:
             print(m, metrics[m])
 
+        import matplotlib.pyplot as plt
+        from sklearn.metrics import r2_score
+
+        y_true = y_test
+        y_pred = model.best_estimator_.predict(X_test)
+
+        plt.scatter(y_true, y_pred, alpha=0.3)
+        plt.plot([y_true.min(), y_true.max()],
+                [y_true.min(), y_true.max()],
+                'k--', lw=2)
+        plt.xlabel("Actual subscriptions")
+        plt.ylabel("Predicted subscriptions")
+        plt.title(f"R² = {r2_score(y_true, y_pred):.2f}")
+        plt.show()
+
         df_for_inf = df_clean[['stream_name'] + feats].copy()
 
         preds = model.predict(X_test)
-        print(preds)
+        # print(preds)
         pipe_list.append((model.best_estimator_, metrics))
 
 
@@ -301,9 +320,9 @@ def train_predictor(app, *, log_metrics=True):
     # _predictor_state["optional_start_times"] = observed_hours
     _predictor_state["optional_start_times"] = DEFAULT_START_TIMES
 
-    print()
-    print('Optional Start Times:')
-    print(_predictor_state["optional_start_times"])
+    # print()
+    # print('Optional Start Times:')
+    # print(_predictor_state["optional_start_times"])
 
     if log_metrics:
         logging.info("Predictor trained for subs: %s", pipe_list[0][1])
