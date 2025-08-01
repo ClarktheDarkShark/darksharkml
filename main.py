@@ -34,11 +34,20 @@ def create_app():
 
 # expose the app to Gunicorn
 app = create_app()
-cache = cache(app, config={
-    'CACHE_TYPE': 'redis',
-    'CACHE_REDIS_URL': os.environ['REDIS_URL'],  # set this in Heroku config vars
-    'CACHE_DEFAULT_TIMEOUT': 3600,               # 1h default TTL
-})
+redis_url = os.getenv('REDIS_URL')
+if redis_url:
+    cache_config = {
+        'CACHE_TYPE': 'redis',
+        'CACHE_REDIS_URL': redis_url,
+        'CACHE_DEFAULT_TIMEOUT': 3600
+    }
+else:
+    cache_config = {
+        'CACHE_TYPE': 'simple',
+        'CACHE_DEFAULT_TIMEOUT': 300
+    }
+
+cache.init_app(app, config=cache_config)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
