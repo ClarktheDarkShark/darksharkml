@@ -1,6 +1,8 @@
 import os
 from flask import Flask
 from db import db
+from flask_caching import Cache
+
 from dashboard_predictions import dash_preds
 from dashboard_v2 import dash_v2
 from dashboard_v3 import dash_v3
@@ -32,6 +34,11 @@ def create_app():
 
 # expose the app to Gunicorn
 app = create_app()
+cache = Cache(app, config={
+    'CACHE_TYPE': 'redis',
+    'CACHE_REDIS_URL': os.environ['REDIS_URL'],  # set this in Heroku config vars
+    'CACHE_DEFAULT_TIMEOUT': 3600,               # 1h default TTL
+})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

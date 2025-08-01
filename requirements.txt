@@ -10,3 +10,4 @@ shap>=0.45.0
 plotly==5.13.0
 matplotlib>=3.5.0
 pytz==2024.2
+Flask-Caching

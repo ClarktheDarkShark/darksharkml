@@ -6,6 +6,7 @@ from datetime import datetime
 from shap_utils import generate_shap_plots
 import pytz
 
+from main import cache
 from predictor import (
     get_predictor_artifacts,
     _infer_grid_for_game,
@@ -413,6 +414,35 @@ TEMPLATE_V2 = '''
 </html>
 '''
 
+@cache.memoize()
+def cached_infer_grid(
+    pipe_idx: int,
+    stream: str,
+    selected_game: str,
+    tag_opts: tuple[str, ...],
+    today_name: str
+) -> pd.DataFrame:
+    """
+    Runs the full grid inference once and stores it in Redis under a key
+    derived from (pipe_idx, stream, game, tag-tuple, today).
+    Subsequent calls with the same args return _immediately_ from cache.
+    """
+    pipe = pipelines[pipe_idx]
+    # Note: pass tag_opts as a tuple so it’s hashable
+    df = _infer_grid_for_game(
+        pipe, df_inf, features,
+        stream_name=stream,
+        override_tags=list(tag_opts),
+        start_times=list(range(24)),
+        durations=dur_opts,
+        category_options=[selected_game],
+        top_n=1000,
+        unique_scores=False,
+        vary_tags=False,
+        today_name=today_name
+    )
+    return df
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -694,7 +724,6 @@ def get_shap_blocks(pipeline, df_pred, features):
     return _shap_cache['plots']
 
 
-pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Route
@@ -702,7 +731,7 @@ pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load
 @dash_v2.route('/v2', methods=['GET'])
 def show_feature_insights():
     # 1) load
-    
+    pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
     ready = bool(pipelines and df_inf is not None)
     today = datetime.now(pytz.timezone("US/Eastern")).strftime("%A")
 
