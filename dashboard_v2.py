@@ -6,7 +6,7 @@ from datetime import datetime
 from shap_utils import generate_shap_plots
 import pytz
 
-from main import cache
+from extensions import cache
 from predictor import (
     get_predictor_artifacts,
     _infer_grid_for_game,

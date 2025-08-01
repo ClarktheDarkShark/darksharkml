@@ -1,7 +1,7 @@
 import os
 from flask import Flask
 from db import db
-from flask_caching import Cache
+from extensions import cache
 
 from dashboard_predictions import dash_preds
 from dashboard_v2 import dash_v2
