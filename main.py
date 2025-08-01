@@ -34,7 +34,7 @@ def create_app():
 
 # expose the app to Gunicorn
 app = create_app()
-cache = Cache(app, config={
+cache = cache(app, config={
     'CACHE_TYPE': 'redis',
     'CACHE_REDIS_URL': os.environ['REDIS_URL'],  # set this in Heroku config vars
     'CACHE_DEFAULT_TIMEOUT': 3600,               # 1h default TTL
