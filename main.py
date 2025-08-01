@@ -1,8 +1,6 @@
 import os
 from flask import Flask
 from db import db
-from extensions import cache
-
 from dashboard_predictions import dash_preds
 from dashboard_v2 import dash_v2
 from dashboard_v3 import dash_v3
@@ -34,13 +32,6 @@ def create_app():
 
 # expose the app to Gunicorn
 app = create_app()
-
-cache_config = {
-    'CACHE_TYPE': 'simple',
-    'CACHE_DEFAULT_TIMEOUT': 300
-}
-
-cache.init_app(app, config=cache_config)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

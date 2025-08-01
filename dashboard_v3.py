@@ -66,42 +66,6 @@ tbody tr:hover{background:#222}
 </body></html>
 """
 
-def make_feature_row_with_raw_tags(
-    baseline: pd.Series,
-    game: str,
-    hour: int,
-    dur: int,
-    tags: list[str],
-    features: list[str]
-) -> pd.DataFrame:
-    """
-    Build a single-row DataFrame with exactly your pipeline’s features,
-    putting the list of tags into the raw_tags column so your vectorizer
-    sees them.
-    """
-    # 1) take every feature *except* raw_tags from baseline
-    non_tag_feats = [f for f in features if f != "raw_tags"]
-    row = baseline[non_tag_feats].copy()
-
-    # 2) overwrite dynamic fields
-    row["game_category"]   = game
-    row["start_time_hour"] = hour
-    row["stream_duration"] = dur
-
-    # recompute day‐of‐week & cyclic time
-    now = datetime.now(TZ)
-    dow = now.strftime("%A")
-    row["day_of_week"]     = dow
-    row["start_hour_sin"]  = np.sin(2 * np.pi * hour / 24)
-    row["start_hour_cos"]  = np.cos(2 * np.pi * hour / 24)
-    row["is_weekend"]      = dow in ("Saturday", "Sunday")
-
-    # 3) put your list of tags into a one-element list-cell
-    row["raw_tags"] = [tags]
-
-    # 4) return as DataFrame with exactly the pipeline features
-    return row.to_frame().T[features]
-
 
 # ───────────────────────────────────────── route ────────────────────────────
 @dash_v3.route("/v3", methods=["GET"])
