@@ -526,7 +526,7 @@ _predictor_state["metrics_list"],
 # CONVENIENCE PREDICTION HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 def _ensure_trained(app=None):
-    if _predictor_state["pipeline"] is None:
+    if _predictor_state["pipelines"] is None:
         if app is None:
             raise RuntimeError("Model not trained; pass `app` to train_predictor.")
         train_predictor(app)

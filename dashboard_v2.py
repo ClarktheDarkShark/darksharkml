@@ -766,7 +766,8 @@ def show_feature_insights():
     feature_scores = compute_feature_scores(time_preds, selected_game)
 
     # 10) SHAP
-    shap_plots = get_shap_blocks(pipe, df_pred, features) if ready else {'summary':'{}','dependence':'{}'}
+    # shap_plots = get_shap_blocks(pipe, df_pred, features) if ready else {'summary':'{}','dependence':'{}'}
+    shap_plots = []
 
     # 11) render
     return render_template_string(
