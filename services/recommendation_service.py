@@ -23,6 +23,9 @@ def _load_artifacts():
     """
     return get_predictor_artifacts()           # -> pipes, df_inf, feats, …
 
+# ── NEW: warm the cache immediately at module import ───────────────
+#       (any import error will make Heroku fail fast during release)
+_load_artifacts()
 
 def _top_n(
     pipe,

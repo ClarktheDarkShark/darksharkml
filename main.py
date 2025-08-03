@@ -1,6 +1,8 @@
 import os
 from flask import Flask
 from db import db
+import services.recommendation_service
+
 from dashboard_predictions import dash_preds
 from dashboard_v2 import dash_v2
 from dashboard_v3 import dash_v3
