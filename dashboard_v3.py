@@ -2,7 +2,7 @@
 # --------------------------------------------------------------------------
 import numpy as np, pandas as pd, pytz
 from datetime import datetime
-from flask import Blueprint, render_template_string, request
+from flask import Blueprint, render_template_string, request, Response, stream_with_context
 
 from predictor import (
     get_predictor_artifacts,
@@ -75,11 +75,13 @@ TEMPLATE_V3 = """<!doctype html> ... (exact same HTML you pasted) ... """
 
 @dash_v3.route("/v3", methods=["GET"])
 def show_feature_insights_v3():
-    stream = request.args.get("stream")        # ?stream=thelegendyagami
-    try:
-        ctx = get_stream_recommendations(stream)
-    except RuntimeError as err:
-        return str(err), 503
+    stream = request.args.get("stream")
 
-    # pred_result left in place so the template keeps working
-    return render_template_string(TEMPLATE_V3, **ctx, pred_result={})
+    @stream_with_context
+    def generate():
+        yield " " * 2048  # 2 KiB HTTP body = router sees data ⇒ timer resets
+        ctx = get_stream_recommendations(stream)   # heavy bit
+        html = render_template_string(TEMPLATE_V3, **ctx, pred_result={})
+        yield html
+
+    return Response(generate(), mimetype="text/html")
