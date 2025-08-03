@@ -12,6 +12,7 @@ from predictor import (
     _infer_grid_for_game,
       _get_last_row_for_stream  # internal helper; used for dashboard inference
 )
+from main import cache
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FLASK APP & BLUEPRINT SETUP
@@ -414,6 +415,33 @@ TEMPLATE_V2 = '''
 </html>
 '''
 
+
+@cache.memoize(timeout=15*60)   # 15-min cache
+def cached_infer_grid(pipe_id, stream, game, tag_key, today_name):
+    return _infer_grid_for_game(
+        next(p for p in pipelines if id(p) == pipe_id),
+        df_inf, features,
+        stream_name=stream,
+        override_tags=tag_key,         # string, see below
+        start_times=start_opts,
+        durations=dur_opts,
+        category_options=[game],
+        top_n=1000,
+        unique_scores=False,
+        vary_tags=False,
+        today_name=today_name,
+    )
+
+@cache.memoize(timeout=15*60)
+def cached_tag_insights(pipe_id, stream, today_name):
+    return compute_tag_insights(
+        next(p for p in pipelines if id(p) == pipe_id),
+        df_inf, features, stream,
+        cat_opts, start_opts, dur_opts,
+        today_name,
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -743,9 +771,23 @@ def show_feature_insights():
         if manual and ready else None
     )
 
+    tag_key = ",".join(sorted(tag_opts))
+
+    time_preds = (
+        cached_infer_grid(
+            id(pipe), selected_stream, selected_game, tag_key, today
+        )
+        if ready else pd.DataFrame()
+    )
+
+    tag_insights = (
+        cached_tag_insights(id(pipe), selected_stream, today)
+        if ready else []
+    )
+
     # 8) insights tables
     game_insights = compute_game_insights(df_pred, selected_stream) if ready else []
-    tag_insights  = compute_tag_insights(pipe, df_inf, features, selected_stream, cat_opts, start_opts, dur_opts, today) if ready else []
+    # tag_insights  = compute_tag_insights(pipe, df_inf, features, selected_stream, cat_opts, start_opts, dur_opts, today) if ready else []
 
     # 9) heatmap & feature scores
     time_preds = _infer_grid_for_game(

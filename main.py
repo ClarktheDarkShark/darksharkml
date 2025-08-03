@@ -2,13 +2,21 @@ import os
 from flask import Flask
 from db import db
 import services.recommendation_service
+from flask_caching import Cache
 
 from dashboard_predictions import dash_preds
 from dashboard_v2 import dash_v2
 from dashboard_v3 import dash_v3
 
+cache = Cache()
+
 def create_app():
     app = Flask(__name__)
+    app.config.update(
+        CACHE_TYPE="SimpleCache",      # swap to "RedisCache" in prod
+        CACHE_DEFAULT_TIMEOUT=3600,    # 1 h for anything w/out explicit TTL
+    )
+    cache.init_app(app)
 
     # ── Database configuration (pointed via DATABASE_URL) ───────────────────
     db_url = os.environ.get('DATABASE_URL', '')
@@ -34,6 +42,8 @@ def create_app():
 
 # expose the app to Gunicorn
 app = create_app()
+
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
