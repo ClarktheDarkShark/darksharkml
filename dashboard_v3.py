@@ -67,58 +67,57 @@ tbody tr:hover{background:#222}
 """
 
 pipes, df_inf, feats, _, start_opts, dur_opts, metrics = get_predictor_artifacts()
-
-# if not pipes or df_inf is None:
-#     return "Model not ready", 503
-
-# 2) choose streamer (query param or default to most frequent)
-# sel_stream = request.args.get("stream") or df_inf["stream_name"].mode()[0]
-sel_stream = 'thelegendyagami'
-if sel_stream not in df_inf["stream_name"].unique():
-    sel_stream = df_inf["stream_name"].mode()[0]
-
-# 3) streamer-specific history
-baseline = _get_last_row_for_stream(df_inf, sel_stream)
-legend_games = df_inf.loc[df_inf.stream_name == sel_stream, "game_category"].unique().tolist()
-legend_tags = sorted(
-    {t for tags in df_inf.loc[df_inf.stream_name == sel_stream, "raw_tags"].dropna() for t in tags}
-)
-
-# 4) pick three pipelines
-pipe_sub = pipes[0]
-pipe_fol = pipes[1] if len(pipes) > 1 else pipes[0]
-pipe_view= pipes[2] if len(pipes) > 2 else pipes[0]
-
-# 5) helper: top-3 grid for one metric
-def _top3(pipe):
-    df = _infer_grid_for_game(
-        pipe, 
-        df_inf, 
-        feats,
-        stream_name=sel_stream,
-        override_tags=legend_tags,
-        start_times=start_opts,
-        durations=dur_opts,
-        category_options=legend_games,
-        top_n=3,
-        unique_scores=True,
-    )
-    print()
-    print('Inf Grid')
-    print(df)
-    return df.to_dict("records")
-
-top3_subs      = _top3(pipe_sub)
-top3_followers = _top3(pipe_fol)
-top3_viewers   = _top3(pipe_view)
-
-# 6) render
-today_name = datetime.now(TZ).strftime("%A, %B %d, %Y")
-
 # ───────────────────────────────────────── route ────────────────────────────
 @dash_v3.route("/v3", methods=["GET"])
 def show_feature_insights_v3():
+    # 1) load artefacts
+    
+    if not pipes or df_inf is None:
+        return "Model not ready", 503
 
+    # 2) choose streamer (query param or default to most frequent)
+    # sel_stream = request.args.get("stream") or df_inf["stream_name"].mode()[0]
+    sel_stream = 'thelegendyagami'
+    if sel_stream not in df_inf["stream_name"].unique():
+        sel_stream = df_inf["stream_name"].mode()[0]
+
+    # 3) streamer-specific history
+    baseline = _get_last_row_for_stream(df_inf, sel_stream)
+    legend_games = df_inf.loc[df_inf.stream_name == sel_stream, "game_category"].unique().tolist()
+    legend_tags = sorted(
+        {t for tags in df_inf.loc[df_inf.stream_name == sel_stream, "raw_tags"].dropna() for t in tags}
+    )
+
+    # 4) pick three pipelines
+    pipe_sub = pipes[0]
+    pipe_fol = pipes[1] if len(pipes) > 1 else pipes[0]
+    pipe_view= pipes[2] if len(pipes) > 2 else pipes[0]
+
+    # 5) helper: top-3 grid for one metric
+    def _top3(pipe):
+        df = _infer_grid_for_game(
+            pipe, 
+            df_inf, 
+            feats,
+            stream_name=sel_stream,
+            override_tags=legend_tags,
+            start_times=start_opts,
+            durations=dur_opts,
+            category_options=legend_games,
+            top_n=3,
+            unique_scores=True,
+        )
+        print()
+        print('Inf Grid')
+        print(df)
+        return df.to_dict("records")
+
+    top3_subs      = _top3(pipe_sub)
+    top3_followers = _top3(pipe_fol)
+    top3_viewers   = _top3(pipe_view)
+
+    # 6) render
+    today_name = datetime.now(TZ).strftime("%A, %B %d, %Y")
     return render_template_string(
         TEMPLATE_V3,
         selected_stream=sel_stream,
