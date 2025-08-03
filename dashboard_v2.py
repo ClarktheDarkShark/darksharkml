@@ -12,7 +12,7 @@ from predictor import (
     _infer_grid_for_game,
       _get_last_row_for_stream  # internal helper; used for dashboard inference
 )
-from main import cache
+from extensions import cache               # ✔ no longer imports main
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FLASK APP & BLUEPRINT SETUP
