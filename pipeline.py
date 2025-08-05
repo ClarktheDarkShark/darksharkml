@@ -130,7 +130,9 @@ def _build_pipeline(X: pd.DataFrame):
          ['day_of_week']),
         ('cat', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1),
          categorical_cols),
-    ], remainder='drop')
+    ], 
+    remainder='drop',
+    sparse_threshold=0.0)
 
     
     
