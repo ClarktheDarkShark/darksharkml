@@ -787,7 +787,7 @@ def show_feature_insights():
     time_preds = _infer_grid_for_game(
         pipe, df_inf, features,
         stream_name=selected_stream,
-        override_tags=tag_opts,
+        override_tags=legend_tags,
         start_times=list(range(24)),
         durations=dur_opts,
         category_options=[selected_game],
@@ -795,6 +795,9 @@ def show_feature_insights():
         unique_scores=False,
         vary_tags=False,
     ) if ready else pd.DataFrame()
+    print('\nTime Heat Predictions:')
+    print(time_preds)
+
     time_df = (
         time_preds.groupby('start_time_hour')
                   .agg(avg_subs=('y_pred','mean'), confidence=('conf','mean'))
