@@ -3,6 +3,10 @@ from flask import Flask
 from db import db
 import services.recommendation_service
 from extensions import cache
+from dotenv import load_dotenv
+if "DYNO" not in os.environ:     # DYNO is always set on Heroku
+    load_dotenv()               # now DATABASE_URL exists before create_app()
+
 
 from dashboard_predictions import dash_preds
 from dashboard_v2 import dash_v2
@@ -19,6 +23,7 @@ def create_app():
 
     # ── Database configuration (pointed via DATABASE_URL) ───────────────────
     db_url = os.environ.get('DATABASE_URL', '')
+    # db_url = os.getenv('DATABASE_URL')
     if db_url.startswith('postgres://'):
         db_url = db_url.replace('postgres://', 'postgresql://', 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
@@ -45,5 +50,6 @@ app = create_app()
 
 
 if __name__ == '__main__':
+
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)

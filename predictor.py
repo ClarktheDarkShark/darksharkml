@@ -196,20 +196,25 @@ def _train_model(df_daily: pd.DataFrame):
             #     if p.startswith("reg__"):
             #         print(p)
             params = [
-                {
-                    'reg__loss': ['poisson'],
-                    'reg__learning_rate': [0.05, 0.1, 0.2],
-                    'reg__max_leaf_nodes': [31, 63, 80],
-                    'reg__l2_regularization': [0.1, 1.0, 10.0]
-                }
-                # Tweedie‐loss grid (if your sklearn version supports it)
                 # {
+                #     'reg__loss': ['poisson'],
+                #     'reg__learning_rate': [0.05, 0.1, 0.2],
+                #     'reg__max_leaf_nodes': [31, 63, 80],
+                #     'reg__l2_regularization': [0.1, 1.0, 10.0]
+                # }
+                # Tweedie‐loss grid (if your sklearn version supports it)
+                {
+                # 'reg__regressor__loss': [
+                #     'squared_error',    # classic MSE
+                #     'absolute_error',   # MAE
+                # ],
+                'reg__regressor__loss': ['poisson'],
                 # 'reg__regressor__loss': ['tweedie'],
                 # 'reg__regressor__power':          [1.1, 1.5, 1.9],
-                # 'reg__regressor__learning_rate':  [0.01, 0.05, 0.1],
-                # 'reg__regressor__max_leaf_nodes': [15, 31, 63],
-                # 'reg__regressor__l2_regularization':[0.0, 0.1, 1.0, 10.0],
-                # },
+                'reg__regressor__learning_rate':  [0.01, 0.05, 0.1],
+                'reg__regressor__max_leaf_nodes': [15, 31, 63],
+                'reg__regressor__l2_regularization':[0.0, 0.1, 1.0, 10.0],
+                },
             ]
         elif mod == 'svr':
             # tune the SVM’s C, epsilon and kernel

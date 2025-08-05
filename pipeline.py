@@ -23,12 +23,42 @@ from sklearn.decomposition         import TruncatedSVD
 from sklearn.svm import SVR
 from sklearn.preprocessing import QuantileTransformer
 
+from sklearn.base import TransformerMixin, BaseEstimator
+
+class ShiftedLogTransformer(BaseEstimator, TransformerMixin):
+    """
+    On fit: compute shift = max(−y.min()+ε, ε)
+    On transform:   log1p(y + shift)
+    On inverse:  expm1(y_trans) − shift
+    Ensures y+shift ≥ 0 for Poisson/Tweedie.
+    """
+    def __init__(self, epsilon: float = 1e-6):
+        self.epsilon = epsilon
+        self.shift_ = None
+
+    def fit(self, y, **fit_params):
+        # y comes in as shape (n_samples,) or (n_samples, 1)
+        y = np.asarray(y).ravel()
+        y_min = y.min()
+        # if already ≥ 0, we still want a tiny epsilon to avoid log1p(0)
+        self.shift_ = (-y_min + self.epsilon) if y_min < 0 else self.epsilon
+        return self
+
+    def transform(self, y):
+        y = np.asarray(y)
+        return np.log1p(y + self.shift_)
+
+    def inverse_transform(self, y_trans):
+        y_trans = np.asarray(y_trans)
+        return np.expm1(y_trans) - self.shift_
+    
 
 def signed_log1p(y):
     return np.sign(y) * np.log1p(np.abs(y))
 
 def signed_expm1(y):
     return np.sign(y) * (np.expm1(np.abs(y)))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PIPELINE BUILD
@@ -125,10 +155,11 @@ def _build_pipeline(X: pd.DataFrame):
         random_state=42,
         max_iter=200
     )
-    # transformer = FunctionTransformer(np.log1p, np.expm1, check_inverse=False)
+    # transformer = FunctionTransformer(signed_log1p, signed_expm1, check_inverse=False)
+    transformer = ShiftedLogTransformer(epsilon=1e-6)
 
     # 3) wrap HGB in TransformedTargetRegressor
-    # hgb_ttr = TransformedTargetRegressor(regressor=hgb, transformer=transformer)
+    hgb_ttr = TransformedTargetRegressor(regressor=hgb, transformer=transformer)
 
     # from sklearn.ensemble import BaggingRegressor
     # hgb = BaggingRegressor(
@@ -158,5 +189,6 @@ def _build_pipeline(X: pd.DataFrame):
             transformer=qt,
             check_inverse=False)
 
-    return Pipeline([('pre', preprocessor), ('reg', rf)]), 'rf'
+    # return Pipeline([('pre', preprocessor), ('reg', rf)]), 'rf'
+    return Pipeline([('pre', preprocessor), ('reg', hgb_ttr)]), 'hgb'
     # return Pipeline([('pre', preprocessor), ('reg', svr)]), 'svr'
