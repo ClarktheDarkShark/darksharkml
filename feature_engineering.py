@@ -14,7 +14,7 @@ from typing import Optional, List
 # import matplotlib.pyplot as plt
 
 # ROLL_WINDOWS = [1, 3, 7, 14]
-ROLL_WINDOWS = [1, 3]
+ROLL_WINDOWS = [3]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURE ENGINEERING
@@ -118,7 +118,7 @@ def _add_historical_rollups(df: pd.DataFrame):
             df[max_col]  = roll_max(col, n).fillna(0)
 
             # hist_cols.extend([mean_col, std_col, min_col, max_col])
-            hist_cols.extend([mean_col, max_col])
+            hist_cols.extend([mean_col])
 
     # forward-fill and ensure the very first value is zero
     for c in hist_cols:
