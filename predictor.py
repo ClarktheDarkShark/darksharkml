@@ -451,7 +451,10 @@ def _infer_grid_for_game(
 
     # predict
     X_inf = base_rep[features]
+    
     print('\n********************************************************************\n')
+    for f in features:
+        print(f)
     print('X_inf', X_inf['start_time_hour'])
     print('\n********************************************************************\n')
 
