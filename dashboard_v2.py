@@ -498,7 +498,8 @@ def compute_confidence(df: pd.DataFrame, pipeline, features: list[str]) -> pd.Se
             sigma = all_preds.std(axis=1)
         else:
             sigma = np.full(len(df), fill_value=np.mean(df['y_pred']) * 0.01)
-        return 1.0 / (1.0 + sigma)
+        conf = 1.0 / (1.0 + sigma)
+        return pd.Series(conf, index=df.index)   
     except Exception:
         return pd.Series(np.nan, index=df.index)
 
