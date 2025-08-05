@@ -1,10 +1,12 @@
-import os
-from flask import Flask, Blueprint, render_template_string, request
+from flask import Blueprint, render_template_string, request
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from sklearn.compose import TransformedTargetRegressor
 from shap_utils import generate_shap_plots
 import pytz
+from threading import Lock
+_shap_lock = Lock()
 
 
 from predictor import (
@@ -329,16 +331,7 @@ TEMPLATE_V2 = '''
       </div>
     {% endfor %}
   </div>
-  <table>
-    <thead>
-      <tr><th>Feature</th><th>Value</th><th>Score</th></tr>
-    </thead>
-    <tbody>
-      {% for row in feature_scores %}
-      <tr><td>{{ row.feature }}</td><td>{{ row.value }}</td><td>{{ row.score }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+
   <div class="note">
     Red = lowest, Blue = highest predicted subs. Hover for details.
   </div>
@@ -711,20 +704,20 @@ def compute_feature_scores(time_preds, selected_game, top_n_tags=3):
 
 
 
-def get_shap_blocks(pipeline, df_pred, features):
-    """
-    Cache and reuse SHAP if pipeline didn’t change.
-    """
-    global _shap_cache
-    pid = id(pipeline)
-    if _shap_cache.get('pipe_id') != pid:
-        _shap_cache['pipe_id'] = pid
-        _shap_cache['plots'] = generate_shap_plots(pipeline, df_pred, features)
-    return _shap_cache['plots']
+def get_shap_blocks(pipe, df_pred, features):
+    pid = id(pipe)
+    with _shap_lock:
+        if _shap_cache.get("pipe_id") != pid:
+            _shap_cache["pipe_id"] = pid
+            _shap_cache["plots"]  = generate_shap_plots(pipe, df_pred, features)
+    return _shap_cache["plots"]
 
 
 pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
 
+def get_pipeline(idx: int = 0):
+    idx = max(0, min(idx, len(pipelines) - 1))
+    return pipelines[idx]
 # ─────────────────────────────────────────────────────────────────────────────
 # Route
 # ─────────────────────────────────────────────────────────────────────────────
@@ -812,8 +805,8 @@ def show_feature_insights():
     feature_scores = compute_feature_scores(time_preds, selected_game)
 
     # 10) SHAP
-    # shap_plots = get_shap_blocks(pipe, df_pred, features) if ready else {'summary':'{}','dependence':'{}'}
-    shap_plots = []
+    shap_plots = get_shap_blocks(pipe, df_pred, features) if ready else {'summary':'{}','dependence':'{}'}
+    # shap_plots = []
 
     # 11) render
     return render_template_string(
