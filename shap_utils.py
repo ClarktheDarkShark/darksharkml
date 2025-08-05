@@ -172,6 +172,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
     Compute SHAP values on a full bag‑of‑words tag matrix (no SVD),
     so each tag token appears by name. Returns HTML snippets.
     """
+    df = df.sample(min(1000, len(df)), random_state=0)
 
     # ────────────────────────────────────────────────────────────────
     # 1) Build an “explain” preprocessor WITHOUT the SVD step
@@ -209,7 +210,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
 
     # ─── convert to dense if sparse
     if hasattr(X_bow, "toarray"):
-        X_bow = X_bow.toarray()
+        X_bow = X_bow.astype(np.float32).toarray()
 
     # ────────────────────────────────────────────────────────────────
     # 3) Manually reconstruct the token‑level feature names
