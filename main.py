@@ -29,7 +29,7 @@ def create_app():
     app.register_blueprint(dash_preds)
     app.register_blueprint(dash_v2)  # Remove prefix; route will be accessible at /v2
     
-    app.register_blueprint(dash_v3)
+    # app.register_blueprint(dash_v3)
 
     with app.app_context():
         # create tables if you’re not running migrations
