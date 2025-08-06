@@ -457,13 +457,12 @@ def _infer_grid_for_game(
     print(X_inf[['game_category','stream_duration',
              'avg_total_subscriptions_last_7']].head())
 
-    
-    preds  = pipeline.predict(X_inf.tail(1))
+    preds  = pipeline.predict(X_inf)
+
 
     # approximate confidence via tree‑ensemble σ
     pre  = pipeline.named_steps["pre"]
     X_pre = pre.transform(X_inf)
-    
     model = pipeline.named_steps["reg"]
     from sklearn.compose import TransformedTargetRegressor
     if isinstance(model, TransformedTargetRegressor):
