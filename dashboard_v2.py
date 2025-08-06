@@ -789,7 +789,7 @@ def show_feature_insights():
         stream_name=selected_stream,
         override_tags=None,
         start_times=list(range(24)),
-        durations=dur_opts,
+        durations=[3],
         category_options=[selected_game],
         top_n=1000,
         unique_scores=False,
