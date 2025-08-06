@@ -469,6 +469,7 @@ def _infer_grid_for_game(
     
     # print()
     base_rep = add_time_features(base_rep)
+    print('X_inf:\n',base_rep.T)
     # print('base_rep',base_rep[['day_of_week','start_time_hour','stream_duration','raw_tags']].head())
 
     # predict
