@@ -719,7 +719,7 @@ def get_shap_blocks(pipe, df_pred, features):
 
 
 
-pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Route
@@ -727,6 +727,7 @@ pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load
 @dash_v2.route('/v2', methods=['GET'])
 def show_feature_insights():
     # 1) load
+    pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
     def get_pipeline(idx: int = 0):
       idx = max(0, min(idx, len(pipelines) - 1))
       return pipelines[idx]
