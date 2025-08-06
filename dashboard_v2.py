@@ -877,7 +877,7 @@ def show_feature_insights():
     # feature_scores = compute_feature_scores(time_preds, selected_game)
 
     time_preds = predict_time_grid(
-      baseline_row      = base_row,
+      baseline_row      = baseline,
       category_options  = [selected_game],      # or multiple games
       start_times       = list(range(24)),
       durations         = [4],                  # or any list of ints
