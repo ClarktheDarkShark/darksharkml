@@ -14,7 +14,7 @@ from typing import Optional, List
 # import matplotlib.pyplot as plt
 
 # ROLL_WINDOWS = [1, 3, 7, 14]
-ROLL_WINDOWS = [3]
+ROLL_WINDOWS = [7]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURE ENGINEERING
