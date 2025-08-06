@@ -383,11 +383,28 @@ def _infer_grid_for_game(
 
     # wrap in [ … ] so pandas sees one element
     base["raw_tags"] = [ last["raw_tags"] ]
+    tag_cols = [c for c in features if c.startswith("tag_")]
 
-    # 4) if override_tags is provided, replace the list
-    if override_tags is not None and not vary_tags:
-        # again, wrap in a list so we get a single‐cell column
-        base["raw_tags"] = [ override_tags ]
+    # Make sure all expected tag columns exist in 'base'
+    for col in tag_cols:
+        if col not in base.columns:
+            base[col] = 0
+
+    # Decide which tags should be active
+    current_tags = (
+        override_tags if override_tags is not None
+        else base.at[base.index[0], "raw_tags"]
+    )
+
+    # Set each tag dummy to 1 if that tag is present, otherwise 0
+    for col in tag_cols:
+        tag_name = col[len("tag_"):]  # remove the 'tag_' prefix
+        base.at[base.index[0], col] = int(tag_name in current_tags)
+
+    # If override_tags were provided, update the raw_tags list accordingly
+    if override_tags is not None:
+        base.at[base.index[0], "raw_tags"] = override_tags
+
 
     # 5) TAG‐FLIPPING mode?
     if vary_tags:
