@@ -409,13 +409,14 @@ TEMPLATE_V2 = '''
 '''
 
 
-@cache.memoize(timeout=15*60)   # 15-min cache
+# @cache.memoize(timeout=15*60)   # 15-min cache
 def cached_infer_grid(pipe_id, stream, game, tag_key, today_name):
+    tags = tag_key.split(",") if tag_key else None
     return _infer_grid_for_game(
         next(p for p in pipelines if id(p) == pipe_id),
         df_inf, features,
         stream_name=stream,
-        override_tags=tag_key,         # string, see below
+        override_tags=tags,         # string, see below
         start_times=start_opts,
         durations=dur_opts,
         category_options=[game],
