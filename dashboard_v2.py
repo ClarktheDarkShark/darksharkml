@@ -5,6 +5,7 @@ from datetime import datetime
 from sklearn.compose import TransformedTargetRegressor
 from shap_utils import generate_shap_plots
 import pytz
+import itertools
 from threading import Lock
 _shap_lock = Lock()
 
@@ -445,6 +446,63 @@ def load_artifacts():
     """
     return get_predictor_artifacts()
 
+def predict_time_grid(
+        baseline_row: pd.Series,
+        category_options: list[str],
+        start_times: list[int],          # e.g. range(24)
+        durations: list[int],            # e.g. [1, 2, 3, 4]
+        selected_tags: list[str],
+        tag_opts: list[str],
+        pipeline,
+        features: list[str],
+        tz: str = "US/Eastern",
+) -> pd.DataFrame:
+    """
+    Generate y-hat + confidence for every (game, hour, duration) triple.
+
+    Returns a DataFrame ready for downstream aggregation:
+        ['game_category', 'start_time_hour', 'stream_duration',
+         'y_pred', 'conf',  …original feature columns]
+    """
+    # ------------------------------------------------------------------ #
+    # 1) Cartesian grid of inputs
+    combos = list(itertools.product(category_options, start_times, durations))
+    grid = pd.DataFrame(
+        combos,
+        columns=["game_category", "start_time_hour", "stream_duration"]
+    )
+
+    # ------------------------------------------------------------------ #
+    # 2) Repeat the baseline row and overwrite the dynamic cols
+    base_rep = baseline_row.loc[baseline_row.index.repeat(len(grid))] \
+                            .reset_index(drop=True)
+    for col in ["game_category", "start_time_hour", "stream_duration"]:
+        base_rep[col] = grid[col]
+
+    # ------------------------------------------------------------------ #
+    # 3) Day-of-week & cyclical hour features (same DOW for every row)
+    now = datetime.now(pytz.timezone(tz))
+    dow = now.strftime("%A")
+    base_rep["day_of_week"] = dow
+    base_rep["is_weekend"] = dow in ("Saturday", "Sunday")
+    base_rep["start_hour_sin"] = np.sin(2 * np.pi * base_rep["start_time_hour"] / 24)
+    base_rep["start_hour_cos"] = np.cos(2 * np.pi * base_rep["start_time_hour"] / 24)
+
+    # ------------------------------------------------------------------ #
+    # 4) Binary tag columns
+    for t in tag_opts:
+        base_rep[f"tag_{t}"] = int(t in selected_tags)
+
+    # ------------------------------------------------------------------ #
+    # 5) Model inference (vectorised)
+    X = base_rep[features]
+    base_rep["y_pred"] = pipeline.predict(X).astype(float)
+
+    # ------------------------------------------------------------------ #
+    # 6) Confidence for each row (reuse your helper)
+    base_rep["conf"] = compute_confidence(base_rep, pipeline, features)
+
+    return base_rep
 
 def extract_all_tags(pipelines) -> list[str]:
     """
@@ -793,28 +851,52 @@ def show_feature_insights():
     # 9) heatmap & feature scores
     print('\n******************************************************')
     print('Just before function call...\n')
-    time_preds = _infer_grid_for_game(
-        pipe, df_inf, features,
-        stream_name=selected_stream,
-        override_tags=selected_tags if selected_tags else None,
-        start_times=list(range(24)),
-        durations=[4],
-        category_options=[selected_game],
-        top_n=1000,
-        unique_scores=False,
-        vary_tags=False,
-    ) if ready else pd.DataFrame()
+    # time_preds = _infer_grid_for_game(
+    #     pipe, df_inf, features,
+    #     stream_name=selected_stream,
+    #     override_tags=selected_tags if selected_tags else None,
+    #     start_times=list(range(24)),
+    #     durations=[4],
+    #     category_options=[selected_game],
+    #     top_n=1000,
+    #     unique_scores=False,
+    #     vary_tags=False,
+    # ) if ready else pd.DataFrame()
 
-    print('\nTime Heat Predictions:')
-    print(time_preds[['start_time_hour','stream_duration','y_pred','tags']])
+    # print('\nTime Heat Predictions:')
+    # print(time_preds[['start_time_hour','stream_duration','y_pred','tags']])
 
+    # time_df = (
+    #     time_preds.groupby('start_time_hour')
+    #               .agg(avg_subs=('y_pred','max'), confidence=('conf','mean'))
+    #               .reset_index()
+    #               .rename(columns={'start_time_hour':'time'})
+    #               .round(2)
+    # ) if ready else pd.DataFrame(columns=['time','avg_subs','confidence'])
+    # heatmap_cells  = compute_heatmap_cells(time_df)
+    # feature_scores = compute_feature_scores(time_preds, selected_game)
+
+    time_preds = predict_time_grid(
+      baseline_row      = base_row,
+      category_options  = [selected_game],      # or multiple games
+      start_times       = list(range(24)),
+      durations         = [4],                  # or any list of ints
+      selected_tags     = selected_tags,
+      tag_opts          = tag_opts,
+      pipeline          = pipe,
+      features          = features,
+  )
+
+    # Existing aggregation → heat-map cells
     time_df = (
-        time_preds.groupby('start_time_hour')
-                  .agg(avg_subs=('y_pred','max'), confidence=('conf','mean'))
+        time_preds.groupby("start_time_hour")
+                  .agg(avg_subs=("y_pred", "max"),
+                      confidence=("conf", "mean"))
                   .reset_index()
-                  .rename(columns={'start_time_hour':'time'})
+                  .rename(columns={"start_time_hour": "time"})
                   .round(2)
-    ) if ready else pd.DataFrame(columns=['time','avg_subs','confidence'])
+    )
+
     heatmap_cells  = compute_heatmap_cells(time_df)
     feature_scores = compute_feature_scores(time_preds, selected_game)
 
