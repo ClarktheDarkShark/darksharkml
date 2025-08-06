@@ -457,24 +457,32 @@ def _infer_grid_for_game(
     print(X_inf[['game_category','stream_duration',
              'avg_total_subscriptions_last_7']].head())
 
-    pre = pipeline.named_steps["pre"]
-
-    # 1. See which game one-hot columns exist
-    pre.set_output(transform="pandas")
-    X_debug = pre.transform(X_inf.head(10))
-    print("\n[DEBUG] One-hot sample:")
-    print(X_debug.filter(like="game_cat__").head())   # <-- all zeros? there's the bug
-    pre.set_output(transform="default")
-
-    # 2. Check how many categories are zeros across the whole grid
-    zeros = (X_debug.filter(like="game_cat__") == 0).all(axis=1).sum()
-    print(f"[DEBUG] rows with *no* game one-hot active: {zeros} of {len(X_inf)}")
     
     preds  = pipeline.predict(X_inf)
 
     # approximate confidence via tree‑ensemble σ
     pre  = pipeline.named_steps["pre"]
     X_pre = pre.transform(X_inf)
+
+    # --- (1) locate the game one-hot block ---------------------------
+    feat_names = pre.get_feature_names_out()
+    game_idx = [i for i, f in enumerate(feat_names) if f.startswith("game_cat__")]
+    game_block = X_pre[:, game_idx]        # still sparse
+
+    # --- (2) how many rows are “all-zero” in that block? -------------
+    nz_per_row = np.diff(game_block.indptr)   # non-zeros per row
+    rows_all_zero = np.sum(nz_per_row == 0)
+    print(f"[DBG] rows with NO active game dummy: {rows_all_zero} / {X_pre.shape[0]}")
+
+    # --- (3) show first 5 rows’ active game columns -----------------
+    for r in range(min(5, X_pre.shape[0])):
+        if nz_per_row[r] == 0:
+            print(f"row {r}:  <no game one-hot>")                 # problem row
+        else:
+            active = game_block[r].nonzero()[1]
+            print(f"row {r}: ", [feat_names[game_idx[i]] for i in active])
+
+            
     model = pipeline.named_steps["reg"]
     from sklearn.compose import TransformedTargetRegressor
     if isinstance(model, TransformedTargetRegressor):
