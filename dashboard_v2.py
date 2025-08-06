@@ -493,7 +493,7 @@ def predict_time_grid(
         base_rep[f"tag_{t}"] = int(t in selected_tags)
 
     # 6) Inference (dtypes are now guaranteed correct)
-    X                = base_rep[features].head(1)
+    X                = base_rep[features]
     print(X.head())
     base_rep["y_pred"] = pipeline.predict(X)
     print('y_pred:',base_rep["y_pred"])
