@@ -502,8 +502,10 @@ def predict_time_grid(
     # ------------------------------------------------------------------ #
     # 5) Model inference + confidence
     pd.set_option('display.max_rows', None)
-    print(base_rep.T)
+    
     X                 = base_rep[features]
+    
+    print(X.T)
     base_rep["y_pred"] = pipeline.predict(X).astype(float)
     base_rep["conf"]   = compute_confidence(base_rep, pipeline, features)
 
