@@ -472,8 +472,8 @@ def predict_time_grid(
     # ------------------------------------------------------------------ #
     # 2) Duplicate *rows* of the baseline, then graft on the grid columns
     #    (pd.concat is clearer/safer than the old .index.repeat trick)
-    base_rep['game_category'] = category_options
-    base_rep['stream_duration'] = durations
+    baseline_row['game_category'] = category_options
+    baseline_row['stream_duration'] = durations
     base_rep = pd.concat(
         [baseline_row.to_frame().T] * len(grid),     # list of identical 1-row DFs
         ignore_index=True
