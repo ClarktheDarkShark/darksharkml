@@ -102,7 +102,8 @@ def _add_historical_rollups(df: pd.DataFrame):
         'avg_sentiment_score', 
         'min_sentiment_score', 
         'max_sentiment_score',
-        'category_changes'
+        'category_changes',
+        'start_time_hour'
     ]
     hist_cols = []
     for col in cols:
@@ -147,8 +148,8 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
     df['start_time_hour'] = df['stream_start_time'].apply(_round_to_nearest_hour)
 
     # >>> ADD the cyclic features early
-    df['start_hour_sin'] = np.sin(2 * np.pi * df['start_time_hour'] / 24)
-    df['start_hour_cos'] = np.cos(2 * np.pi * df['start_time_hour'] / 24)
+    # df['start_hour_sin'] = np.sin(2 * np.pi * df['start_time_hour'] / 24)
+    # df['start_hour_cos'] = np.cos(2 * np.pi * df['start_time_hour'] / 24)
 
     if 'day_of_week' not in df:
         df['day_of_week'] = df['stream_date'].dt.day_name()
@@ -164,7 +165,8 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
     
     base_feats = [
         'day_of_week',
-        'start_hour_sin', 'start_hour_cos',
+        # 'start_hour_sin', 'start_hour_cos',
+        'start_time_hour',
         'is_weekend',
         'days_since_previous_stream',
         'game_category',
@@ -177,8 +179,6 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
         features = base_feats + hist_cols + ['raw_tags']
     else:
         features = base_feats + hist_cols 
-        features['start_hour_sin_dup'] = base_feats['start_hours_sin']
-        features['start_hour_cos_dup'] = base_feats['start_hours_cos']
 
     df['game_category'] = df['game_category'].str.lower()
 

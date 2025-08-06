@@ -485,8 +485,8 @@ def predict_time_grid(
 
     base_rep["day_of_week"]     = dow
     base_rep["is_weekend"]      = dow in ("Saturday", "Sunday")
-    base_rep["start_hour_sin"]  = np.sin(2 * np.pi * hours / 24)
-    base_rep["start_hour_cos"]  = np.cos(2 * np.pi * hours / 24)
+    # base_rep["start_hour_sin"]  = np.sin(2 * np.pi * hours / 24)
+    # base_rep["start_hour_cos"]  = np.cos(2 * np.pi * hours / 24)
 
     # 5) Tag one-hots
     for t in tag_opts:
@@ -499,8 +499,8 @@ def predict_time_grid(
     print('y_pred:',base_rep["y_pred"])
     base_rep["conf"]   = compute_confidence(base_rep, pipeline, features)
 
-    pd.set_option('display.max_rows', None)
-    print('base_rep:\n',X[['day_of_week','start_hour_sin','stream_duration', "raw_tags"]].T)
+    # pd.set_option('display.max_rows', None)
+    # print('base_rep:\n',X[['day_of_week','start_hour_sin','stream_duration', "raw_tags"]].T)
 
     return base_rep
 
@@ -647,8 +647,8 @@ def manual_prediction(
     dow = now.strftime('%A')
     row.update({
         'day_of_week': dow,
-        'start_hour_sin': np.sin(2*np.pi*selected_start_time/24),
-        'start_hour_cos': np.cos(2*np.pi*selected_start_time/24),
+        # 'start_hour_sin': np.sin(2*np.pi*selected_start_time/24),
+        # 'start_hour_cos': np.cos(2*np.pi*selected_start_time/24),
         'is_weekend': dow in ('Saturday','Sunday')
     })
     # 2) set tags
@@ -661,8 +661,8 @@ def manual_prediction(
     conf = compute_confidence(pd.DataFrame([row]), pipeline, features).iloc[0]
     pd.set_option('display.max_rows', None)
 
-    print('manual_prediction:\n',X[['day_of_week','start_hour_sin','stream_duration', 'raw_tags']].T)
-    print('manual pred:', y_pred)
+    # print('manual_prediction:\n',X[['day_of_week','start_hour_sin','stream_duration', 'raw_tags']].T)
+    # print('manual pred:', y_pred)
 
     return {'y_pred': round(y_pred,2), 'conf': round(conf,2) if not np.isnan(conf) else '?'}
 

@@ -97,7 +97,13 @@ def _build_pipeline(X: pd.DataFrame):
     categorical_cols = [c for c in X.select_dtypes(include=['object','category']).columns
                         if c!='day_of_week' and c!='raw_tags'] 
     
-    # print(X)
+    numeric_cols_all = X.select_dtypes(include=[np.number]).columns.tolist()
+
+    # Exclude start_time_hour (and any other column you want to drop)
+    numeric_cols = [
+        c for c in numeric_cols_all 
+        if c not in bool_cols + ['start_time_hour', 'day_of_week', 'raw_tags']
+    ]
     
     # # 2) Build a tag‑vectorizing pipeline:
     # tag_pipeline = Pipeline([

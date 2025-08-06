@@ -120,7 +120,7 @@ def _load_daily_stats_df(app):
         df_daily = pd.read_sql_table(DailyStats.__tablename__, con=db.engine)
     # ensure columns are strings
     df_daily.columns = df_daily.columns.map(str)
-    df_daily = add_time_features(df_daily)
+    # df_daily = add_time_features(df_daily)
 
 
     df_daily['raw_tags'] = df_daily['tags'].apply(lambda x: x if isinstance(x, list) else [])
@@ -315,13 +315,13 @@ def train_predictor(app, *, log_metrics=True):
     })
 
     # 5) capture **only** the hours we actually saw
-    observed_hours = sorted(
-        df_daily['start_time_hour']
-                .dropna()
-                .astype(int)
-                .unique()
-                .tolist()
-    )
+    # observed_hours = sorted(
+    #     df_daily['start_time_hour']
+    #             .dropna()
+    #             .astype(int)
+    #             .unique()
+    #             .tolist()
+    # )
     # _predictor_state["optional_start_times"] = observed_hours
     _predictor_state["optional_start_times"] = DEFAULT_START_TIMES
 
@@ -471,7 +471,7 @@ def _infer_grid_for_game(
         base_rep[col] = grid[col]
     
     # print()
-    base_rep = add_time_features(base_rep)
+    # base_rep = add_time_features(base_rep)
     # print('X_inf:\n',base_rep.T)
     # print('base_rep',base_rep[['day_of_week','start_time_hour','stream_duration','raw_tags']].head())
 
