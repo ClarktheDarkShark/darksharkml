@@ -455,7 +455,7 @@ def _infer_grid_for_game(
     # predict
     X_inf = base_rep[features]
     print(X_inf[['game_category','stream_duration',
-             'avg_total_subscriptions_last_3']].head())
+             'avg_total_subscriptions_last_7']].head())
 
     preds  = pipeline.predict(X_inf)
 
