@@ -377,6 +377,7 @@ def _infer_grid_for_game(
     # 1) grab the last-known feature row for this stream
     last = _get_last_row_for_stream(df_for_inf, stream_name)
 
+
     # 2) build a 1-row DataFrame and insert raw_tags as a single-cell list
     non_tag_feats = [f for f in features if f != "raw_tags"]
     base = last[non_tag_feats].to_frame().T
@@ -472,8 +473,11 @@ def _infer_grid_for_game(
 
     # predict
     X_inf = base_rep[features]
+    print('X_inf:\n',X_inf[['day_of_week','start_time_hour','stream_duration'] + [f'tag_{t}' for t in tag_opts]])
+    
 
     preds  = pipeline.predict(X_inf)
+    print('X_inf pred:', preds)
 
 
     # approximate confidence via tree‑ensemble σ
