@@ -447,66 +447,54 @@ def load_artifacts():
     return get_predictor_artifacts()
 
 def predict_time_grid(
-    baseline_row: pd.Series,
-    category_options,
-    start_times: list[int],
-    durations,
-    selected_tags: list[str],
-    tag_opts: list[str],
-    pipeline,
-    features: list[str],
-    tz: str = "US/Eastern",
+        baseline_row: pd.Series,
+        start_times: list[int],
+        game_category: str,
+        duration: int,
+        selected_tags: list[str],
+        tag_opts: list[str],
+        pipeline,
+        features: list[str],
+        tz: str = "US/Eastern",
 ) -> pd.DataFrame:
     """
-    Vectorised y-hat + confidence for every (game, hour, duration) triple.
+    Return one row per hour with the *same* feature schema that
+    `manual_prediction` feeds the model.
     """
-    # ------------------------------------------------------------------ #
-    # 1) Cartesian product of the three dynamic dimensions
-    combos = list(itertools.product(start_times))
+    # 1) Build the grid (24 × 1 × 1)
     grid = pd.DataFrame(
-        combos,
-        columns=["start_time_hour"],
-        dtype=baseline_row.dtype,          # keeps dtypes consistent
+        {"start_time_hour": start_times}, dtype="int64"
     )
 
-    # ------------------------------------------------------------------ #
-    # 2) Duplicate *rows* of the baseline, then graft on the grid columns
-    #    (pd.concat is clearer/safer than the old .index.repeat trick)
-    baseline_row['game_category'] = category_options
-    baseline_row['stream_duration'] = durations
-    base_rep = pd.concat(
-        [baseline_row.to_frame().T] * len(grid),     # list of identical 1-row DFs
-        ignore_index=True
+    # 2)   ***clone*** the clean template *before* mutating it
+    template = baseline_row.copy(deep=True)
+    template["game_category"]    = game_category      # scalar string
+    template["stream_duration"]  = duration           # scalar int
+
+    # 3) Repeat the template and splice in the varying hour
+    base_rep = pd.DataFrame(
+        np.repeat(template.values[None, :], len(grid), axis=0),
+        columns=template.index
     )
+    base_rep["start_time_hour"] = grid["start_time_hour"].astype("int64")
 
-
-    # overwrite the varying columns with our grid values
-    base_rep[["start_time_hour"]] = grid
-
-    # ------------------------------------------------------------------ #
-    # 3) Add time-derived features (vectorised)
-    now   = datetime.now(pytz.timezone(tz))
-    dow   = now.strftime("%A")
-    hours = base_rep["start_time_hour"].astype(float)
+    # 4) Derived time features
+    now      = datetime.now(pytz.timezone(tz))
+    dow      = now.strftime("%A")
+    hours    = base_rep["start_time_hour"].astype(float)
 
     base_rep["day_of_week"]     = dow
     base_rep["is_weekend"]      = dow in ("Saturday", "Sunday")
     base_rep["start_hour_sin"]  = np.sin(2 * np.pi * hours / 24)
     base_rep["start_hour_cos"]  = np.cos(2 * np.pi * hours / 24)
 
-    # ------------------------------------------------------------------ #
-    # 4) One-hot tag flags (same across every row for this call)
+    # 5) Tag one-hots
     for t in tag_opts:
         base_rep[f"tag_{t}"] = int(t in selected_tags)
 
-    # ------------------------------------------------------------------ #
-    # 5) Model inference + confidence
-    pd.set_option('display.max_rows', None)
-    
-    X                 = base_rep[features]
-    
-    print(X.T)
-    base_rep["y_pred"] = pipeline.predict(X).astype(float)
+    # 6) Inference (dtypes are now guaranteed correct)
+    X                = base_rep[features]
+    base_rep["y_pred"] = pipeline.predict(X)
     base_rep["conf"]   = compute_confidence(base_rep, pipeline, features)
 
     return base_rep
@@ -669,6 +657,7 @@ def manual_prediction(
 
     print('manual_prediction:\n',row[['day_of_week','start_time_hour','stream_duration'] + [f'tag_{t}' for t in tag_opts]])
     print('manual pred:', y_pred)
+
     return {'y_pred': round(y_pred,2), 'conf': round(conf,2) if not np.isnan(conf) else '?'}
 
 
@@ -813,6 +802,7 @@ def show_feature_insights():
     # 3) which stream?
     selected_stream = select_stream(request, df_inf)
     baseline = compute_baseline_row(df_inf, selected_stream) if ready else None
+    og_baseline = baseline.copy(deep=True)
 
     # 4) full‐frame predictions + confidence
     df_pred = predict_df(df_inf, pipe, features) if ready else df_inf.copy()
@@ -855,11 +845,11 @@ def show_feature_insights():
     game_insights = compute_game_insights(df_pred, selected_stream) if ready else []
     tag_insights  = compute_tag_insights(pipe, df_inf, features, selected_stream, cat_opts, start_opts, dur_opts, today) if ready else []
 
-    print('tag_opts',tag_opts)
+    # print('tag_opts',tag_opts)
 
     # 9) heatmap & feature scores
-    print('\n******************************************************')
-    print('Just before function call...\n')
+    # print('\n******************************************************')
+    # print('Just before function call...\n')
     # time_preds = _infer_grid_for_game(
     #     pipe, df_inf, features,
     #     stream_name=selected_stream,
@@ -886,7 +876,7 @@ def show_feature_insights():
     # feature_scores = compute_feature_scores(time_preds, selected_game)
 
     time_preds = predict_time_grid(
-      baseline_row      = baseline,
+      baseline_row      = og_baseline,
       category_options  = selected_game,      # or multiple games
       start_times       = list(range(24)),
       durations         = 4,                  # or any list of ints
