@@ -730,7 +730,7 @@ def show_feature_insights():
     today = datetime.now(pytz.timezone("US/Eastern")).strftime("%A")
 
       # pick which model to show (default=0 for first pipeline)
-    model_idx = int(request.args.get('model', 2))
+    model_idx = int(request.args.get('model', 0))
     model_idx = max(0, min(model_idx, len(pipelines)-1))
     pipe    = pipelines[model_idx]
     metrics = metrics_list[model_idx]

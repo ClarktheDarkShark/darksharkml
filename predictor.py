@@ -426,6 +426,7 @@ def _infer_grid_for_game(
     # 6) GRID‐BASED mode: build (game, hour, duration) grid
     if today_name is None:
         today_name = datetime.now(EST).strftime("%A")
+        
 
     if category_options is None:
         category_options = sorted(df_for_inf["game_category"].dropna().unique().tolist())
