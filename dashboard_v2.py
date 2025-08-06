@@ -783,7 +783,7 @@ def show_feature_insights():
 
     # 8) insights tables
     game_insights = compute_game_insights(df_pred, selected_stream) if ready else []
-    # tag_insights  = compute_tag_insights(pipe, df_inf, features, selected_stream, cat_opts, start_opts, dur_opts, today) if ready else []
+    tag_insights  = compute_tag_insights(pipe, df_inf, features, selected_stream, cat_opts, start_opts, dur_opts, today) if ready else []
 
     # 9) heatmap & feature scores
     time_preds = _infer_grid_for_game(
