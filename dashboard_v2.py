@@ -877,9 +877,9 @@ def show_feature_insights():
 
     time_preds = predict_time_grid(
       baseline_row      = og_baseline,
-      category_options  = selected_game,      # or multiple games
+      game_category  = selected_game,      # or multiple games
       start_times       = list(range(24)),
-      durations         = 4,                  # or any list of ints
+      duration         = 4,                  # or any list of ints
       selected_tags     = selected_tags,
       tag_opts          = tag_opts,
       pipeline          = pipe,
