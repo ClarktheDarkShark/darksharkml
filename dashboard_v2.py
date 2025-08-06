@@ -447,64 +447,64 @@ def load_artifacts():
     return get_predictor_artifacts()
 
 def predict_time_grid(
-        baseline_row: pd.Series,
-        category_options: list[str],
-        start_times: list[int],          # e.g. range(24)
-        durations: list[int],            # e.g. [1, 2, 3, 4]
-        selected_tags: list[str],
-        tag_opts: list[str],
-        pipeline,
-        features: list[str],
-        tz: str = "US/Eastern",
+    baseline_row: pd.Series,
+    category_options: list[str],
+    start_times: list[int],
+    durations: list[int],
+    selected_tags: list[str],
+    tag_opts: list[str],
+    pipeline,
+    features: list[str],
+    tz: str = "US/Eastern",
 ) -> pd.DataFrame:
     """
-    Generate y-hat + confidence for every (game, hour, duration) triple.
-
-    Returns a DataFrame ready for downstream aggregation:
-        ['game_category', 'start_time_hour', 'stream_duration',
-         'y_pred', 'conf',  …original feature columns]
+    Vectorised y-hat + confidence for every (game, hour, duration) triple.
     """
     # ------------------------------------------------------------------ #
-    # 1) Cartesian grid of inputs
+    # 1) Cartesian product of the three dynamic dimensions
     combos = list(itertools.product(category_options, start_times, durations))
     grid = pd.DataFrame(
         combos,
-        columns=["game_category", "start_time_hour", "stream_duration"]
+        columns=["game_category", "start_time_hour", "stream_duration"],
+        dtype=baseline_row.dtype,          # keeps dtypes consistent
     )
 
     # ------------------------------------------------------------------ #
-    # 2) Repeat the baseline row and overwrite the dynamic cols
-    base_rep = baseline_row.loc[baseline_row.index.repeat(len(grid))] \
-                            .reset_index(drop=True)
-    for col in ["game_category", "start_time_hour", "stream_duration"]:
-        base_rep[col] = grid[col]
+    # 2) Duplicate *rows* of the baseline, then graft on the grid columns
+    #    (pd.concat is clearer/safer than the old .index.repeat trick)
+    base_rep = pd.concat(
+        [baseline_row.to_frame().T] * len(grid),     # list of identical 1-row DFs
+        ignore_index=True
+    )
+
+    # overwrite the varying columns with our grid values
+    base_rep[["game_category", "start_time_hour", "stream_duration"]] = grid
 
     # ------------------------------------------------------------------ #
-    # 3) Day-of-week & cyclical hour features (same DOW for every row)
-    now = datetime.now(pytz.timezone(tz))
-    dow = now.strftime("%A")
-    base_rep["day_of_week"] = dow
-    base_rep["is_weekend"] = dow in ("Saturday", "Sunday")
-    base_rep["start_hour_sin"] = np.sin(2 * np.pi * base_rep["start_time_hour"] / 24)
-    base_rep["start_hour_cos"] = np.cos(2 * np.pi * base_rep["start_time_hour"] / 24)
+    # 3) Add time-derived features (vectorised)
+    now   = datetime.now(pytz.timezone(tz))
+    dow   = now.strftime("%A")
+    hours = base_rep["start_time_hour"].astype(float)
+
+    base_rep["day_of_week"]     = dow
+    base_rep["is_weekend"]      = dow in ("Saturday", "Sunday")
+    base_rep["start_hour_sin"]  = np.sin(2 * np.pi * hours / 24)
+    base_rep["start_hour_cos"]  = np.cos(2 * np.pi * hours / 24)
 
     # ------------------------------------------------------------------ #
-    # 4) Binary tag columns
+    # 4) One-hot tag flags (same across every row for this call)
     for t in tag_opts:
         base_rep[f"tag_{t}"] = int(t in selected_tags)
 
     # ------------------------------------------------------------------ #
-    # 5) Model inference (vectorised)
-    pd.set_option('display.max_rows', None)
-    print(base_rep.T)
-    X = base_rep[features]
+    # 5) Model inference + confidence
+    X                 = base_rep[features]
     base_rep["y_pred"] = pipeline.predict(X).astype(float)
-
-    # ------------------------------------------------------------------ #
-    # 6) Confidence for each row (reuse your helper)
-    base_rep["conf"] = compute_confidence(base_rep, pipeline, features)
+    base_rep["conf"]   = compute_confidence(base_rep, pipeline, features)
 
     return base_rep
+
+
 
 def extract_all_tags(pipelines) -> list[str]:
     """
