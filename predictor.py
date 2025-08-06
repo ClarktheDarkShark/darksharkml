@@ -365,6 +365,7 @@ def _infer_grid_for_game(
     start_hour_filter: Optional[int] = None,
     vary_tags: bool = False,
 ):
+    print("→ incoming durations argument:", durations)
     """
     If vary_tags=False, returns top_n rows over the (game, hour, duration) grid,
     with predictions + confidence + tags list.
