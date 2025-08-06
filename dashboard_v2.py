@@ -601,6 +601,7 @@ def manual_prediction(
     conf = compute_confidence(pd.DataFrame([row]), pipeline, features).iloc[0]
 
     print('manual_prediction:\n',row[['day_of_week','start_time_hour','stream_duration'] + [f'tag_{t}' for t in tag_opts]])
+    print('manual pred:', y_pred)
     return {'y_pred': round(y_pred,2), 'conf': round(conf,2) if not np.isnan(conf) else '?'}
 
 
@@ -718,6 +719,7 @@ def get_shap_blocks(pipe, df_pred, features):
 
 
 
+pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Route
@@ -729,7 +731,7 @@ def show_feature_insights():
       idx = max(0, min(idx, len(pipelines) - 1))
       return pipelines[idx]
     
-    pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
+    
     ready = bool(pipelines and df_inf is not None)
     today = datetime.now(pytz.timezone("US/Eastern")).strftime("%A")
 
@@ -800,6 +802,7 @@ def show_feature_insights():
         top_n=1000,
         unique_scores=False,
         vary_tags=False,
+        tag_opts=all_tags,
     ) if ready else pd.DataFrame()
     print('\nTime Heat Predictions:')
     print(time_preds[['start_time_hour','stream_duration','y_pred','tags']])
