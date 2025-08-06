@@ -449,11 +449,11 @@ def _infer_grid_for_game(
     for col in ["game_category","start_time_hour","stream_duration"]:
         base_rep[col] = grid[col]
     
-    base_rep["stream_start_time"] = pd.to_datetime(
+    base_rep["start_time_hour"] = pd.to_datetime(
         pd.Timestamp.today().normalize()          # today at 00:00
         + pd.to_timedelta(base_rep["start_time_hour"], unit="h")
     )
-    base_rep["stream_date"] = base_rep["stream_start_time"].dt.date.astype(str)
+    base_rep["stream_date"] = base_rep["start_time_hour"].dt.date.astype(str)
 
     add_time_features(base_rep)
 
