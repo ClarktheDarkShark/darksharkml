@@ -473,7 +473,7 @@ def _infer_grid_for_game(
 
     # predict
     X_inf = base_rep[features]
-    print('X_inf:\n',X_inf[['day_of_week','start_time_hour','stream_duration'] + [f'tag_{t}' for t in tag_opts]])
+    print('X_inf:\n',X_inf[['day_of_week','start_time_hour','stream_duration']])
     
 
     preds  = pipeline.predict(X_inf)
