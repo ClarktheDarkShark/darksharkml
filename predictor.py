@@ -448,7 +448,8 @@ def _infer_grid_for_game(
     print()
     base_rep = add_time_features(base_rep)
 
-    print(base_rep['start_time_hour', 'start_hour_sin', 'start_hour_cos'])
+    print(base_rep)
+    # print(base_rep['start_time_hour', 'start_hour_sin', 'start_hour_cos'])
 
     # predict
     X_inf = base_rep[features]
