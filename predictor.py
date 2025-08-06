@@ -466,9 +466,9 @@ def _infer_grid_for_game(
     for col in ["game_category","start_time_hour","stream_duration"]:
         base_rep[col] = grid[col]
     
-    print()
+    # print()
     base_rep = add_time_features(base_rep)
-    print('base_rep',base_rep[['day_of_week','start_time_hour','stream_duration','raw_tags']].head())
+    # print('base_rep',base_rep[['day_of_week','start_time_hour','stream_duration','raw_tags']].head())
 
     # predict
     X_inf = base_rep[features]
@@ -524,7 +524,7 @@ def _infer_grid_for_game(
             keep="first",
         )
 
-    print('results',results[['start_time_hour','stream_duration','y_pred','tags']].head())
+    # print('results',results[['start_time_hour','stream_duration','y_pred','tags']].head())
     return results.head(top_n).reset_index(drop=True)
 
 

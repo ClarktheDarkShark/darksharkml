@@ -191,6 +191,6 @@ def _build_pipeline(X: pd.DataFrame):
             transformer=qt,
             check_inverse=False)
 
-    # return Pipeline([('pre', preprocessor), ('reg', rf)]), 'rf'
-    return Pipeline([('pre', preprocessor), ('reg', hgb_ttr)]), 'hgb'
+    return Pipeline([('pre', preprocessor), ('reg', rf)]), 'rf'
+    # return Pipeline([('pre', preprocessor), ('reg', hgb_ttr)]), 'hgb'
     # return Pipeline([('pre', preprocessor), ('reg', svr)]), 'svr'
