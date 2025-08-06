@@ -458,31 +458,14 @@ def _infer_grid_for_game(
              'avg_total_subscriptions_last_7']].head())
 
     
-    preds  = pipeline.predict(X_inf)
+    preds  = pipeline.predict(X_inf[0])
+    print(preds)
+    exit()
 
     # approximate confidence via tree‑ensemble σ
     pre  = pipeline.named_steps["pre"]
     X_pre = pre.transform(X_inf)
-
-    # --- (1) locate the game one-hot block ---------------------------
-    feat_names = pre.get_feature_names_out()
-    game_idx = [i for i, f in enumerate(feat_names) if f.startswith("game_cat__")]
-    game_block = X_pre[:, game_idx]        # still sparse
-
-    # --- (2) how many rows are “all-zero” in that block? -------------
-    nz_per_row = np.diff(game_block.indptr)   # non-zeros per row
-    rows_all_zero = np.sum(nz_per_row == 0)
-    print(f"[DBG] rows with NO active game dummy: {rows_all_zero} / {X_pre.shape[0]}")
-
-    # --- (3) show first 5 rows’ active game columns -----------------
-    for r in range(min(5, X_pre.shape[0])):
-        if nz_per_row[r] == 0:
-            print(f"row {r}:  <no game one-hot>")                 # problem row
-        else:
-            active = game_block[r].nonzero()[1]
-            print(f"row {r}: ", [feat_names[game_idx[i]] for i in active])
-
-            
+    
     model = pipeline.named_steps["reg"]
     from sklearn.compose import TransformedTargetRegressor
     if isinstance(model, TransformedTargetRegressor):
