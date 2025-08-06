@@ -426,7 +426,7 @@ def _infer_grid_for_game(
     # 6) GRID‐BASED mode: build (game, hour, duration) grid
     if today_name is None:
         today_name = datetime.now(EST).strftime("%A")
-        
+
 
     if category_options is None:
         category_options = sorted(df_for_inf["game_category"].dropna().unique().tolist())
@@ -449,6 +449,10 @@ def _infer_grid_for_game(
     for col in ["game_category","start_time_hour","stream_duration"]:
         base_rep[col] = grid[col]
     add_time_features(base_rep)
+
+    dbg_cols = ["start_time_hour", "start_hour_sin", "start_hour_cos",
+            "week_of_year_norm", "days_since_last_stream", "stream_duration"]
+    print(base_rep[dbg_cols].head())
 
     # predict
     X_inf = base_rep[features]
