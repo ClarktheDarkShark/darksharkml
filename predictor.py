@@ -448,10 +448,11 @@ def _infer_grid_for_game(
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
     for col in ["game_category","start_time_hour","stream_duration"]:
         base_rep[col] = grid[col]
+
     add_time_features(base_rep)
 
     dbg_cols = ["start_time_hour", "start_hour_sin", "start_hour_cos",
-            "week_of_year_norm", "days_since_last_stream", "stream_duration"]
+            "days_since_previous_stream", "stream_duration"]
     print(base_rep[dbg_cols].head())
 
     # predict
