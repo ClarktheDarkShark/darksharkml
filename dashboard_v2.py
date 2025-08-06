@@ -776,10 +776,10 @@ def show_feature_insights():
     #     if ready else pd.DataFrame()
     # )
 
-    tag_insights = (
-        cached_tag_insights(id(pipe), selected_stream, today)
-        if ready else []
-    )
+    # tag_insights = (
+    #     cached_tag_insights(id(pipe), selected_stream, today)
+    #     if ready else []
+    # )
 
     # 8) insights tables
     game_insights = compute_game_insights(df_pred, selected_stream) if ready else []
