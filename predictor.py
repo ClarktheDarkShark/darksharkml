@@ -459,6 +459,9 @@ def _infer_grid_for_game(
 
     preds  = pipeline.predict(X_inf)
 
+    print('Preds')
+    print(preds)
+
     # approximate confidence via tree‑ensemble σ
     pre  = pipeline.named_steps["pre"]
     X_pre = pre.transform(X_inf)
