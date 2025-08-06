@@ -716,15 +716,17 @@ def get_shap_blocks(pipe, df_pred, features):
 
 
 
-def get_pipeline(idx: int = 0):
-    idx = max(0, min(idx, len(pipelines) - 1))
-    return pipelines[idx]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Route
 # ─────────────────────────────────────────────────────────────────────────────
 @dash_v2.route('/v2', methods=['GET'])
 def show_feature_insights():
     # 1) load
+    def get_pipeline(idx: int = 0):
+      idx = max(0, min(idx, len(pipelines) - 1))
+      return pipelines[idx]
+    
     pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
     ready = bool(pipelines and df_inf is not None)
     today = datetime.now(pytz.timezone("US/Eastern")).strftime("%A")
