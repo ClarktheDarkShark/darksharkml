@@ -446,6 +446,7 @@ def _infer_grid_for_game(
     base["day_of_week"] = today_name  
     base["is_weekend"] = today_name in ("Saturday", "Sunday")
 
+    print('Category before', category_options)
     if category_options is None:
         category_options = sorted(df_for_inf["game_category"].dropna().unique().tolist())
         restrict_to_stream_game = True
@@ -453,10 +454,15 @@ def _infer_grid_for_game(
         category_options = list(category_options)
         restrict_to_stream_game = False
 
+    print('Category After', category_options)
+    
     if start_times is None:
         start_times = _predictor_state["optional_start_times"]
+    
+    print('durations before', durations)
     if durations is None:
         durations = DEFAULT_DURATIONS_HRS
+    print('durations aftger', durations)
 
     import itertools
     combos = list(itertools.product(category_options, start_times, durations))
@@ -469,13 +475,13 @@ def _infer_grid_for_game(
     
     # print()
     base_rep = add_time_features(base_rep)
-    print('X_inf:\n',base_rep.T)
+    # print('X_inf:\n',base_rep.T)
     # print('base_rep',base_rep[['day_of_week','start_time_hour','stream_duration','raw_tags']].head())
 
     # predict
     X_inf = base_rep[features]
-    pd.set_option('display.max_rows', None)
-    print('X_inf:\n',X_inf.T)
+    # pd.set_option('display.max_rows', None)
+    # print('X_inf:\n',X_inf.T)
     
 
     preds  = pipeline.predict(X_inf)
