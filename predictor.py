@@ -457,10 +457,20 @@ def _infer_grid_for_game(
     print(X_inf[['game_category','stream_duration',
              'avg_total_subscriptions_last_7']].head())
 
-    preds  = pipeline.predict(X_inf)
+    pre = pipeline.named_steps["pre"]
 
-    print('Preds')
-    print(preds)
+    # 1. See which game one-hot columns exist
+    pre.set_output(transform="pandas")
+    X_debug = pre.transform(X_inf.head(10))
+    print("\n[DEBUG] One-hot sample:")
+    print(X_debug.filter(like="game_cat__").head())   # <-- all zeros? there's the bug
+    pre.set_output(transform="default")
+
+    # 2. Check how many categories are zeros across the whole grid
+    zeros = (X_debug.filter(like="game_cat__") == 0).all(axis=1).sum()
+    print(f"[DEBUG] rows with *no* game one-hot active: {zeros} of {len(X_inf)}")
+    
+    preds  = pipeline.predict(X_inf)
 
     # approximate confidence via tree‑ensemble σ
     pre  = pipeline.named_steps["pre"]
