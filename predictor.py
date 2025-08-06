@@ -449,8 +449,7 @@ def _infer_grid_for_game(
     for col in ["game_category","start_time_hour","stream_duration"]:
         base_rep[col] = grid[col]
     
-    base_rep["day_of_week"] = today_name
-    base_rep["is_weekend"]  = today_name in ("Saturday","Sunday")
+    print(base_rep[features].head().T.to_string())
     
     # print(base_rep[features].iloc[:5].T)
     add_time_features(base_rep)
