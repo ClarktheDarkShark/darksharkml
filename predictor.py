@@ -107,6 +107,8 @@ def add_time_features(df: pd.DataFrame) -> None:
     df['start_hour_sin'] = np.sin(_TWO_PI * df['start_time_hour'] / 24)
     df['start_hour_cos'] = np.cos(_TWO_PI * df['start_time_hour'] / 24)
 
+    return df
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA LOADING
 # ─────────────────────────────────────────────────────────────────────────────
@@ -117,7 +119,7 @@ def _load_daily_stats_df(app):
         df_daily = pd.read_sql_table(DailyStats.__tablename__, con=db.engine)
     # ensure columns are strings
     df_daily.columns = df_daily.columns.map(str)
-    add_time_features(df_daily)
+    df_daily = add_time_features(df_daily)
 
 
     df_daily['raw_tags'] = df_daily['tags'].apply(lambda x: x if isinstance(x, list) else [])
@@ -444,7 +446,7 @@ def _infer_grid_for_game(
         base_rep[col] = grid[col]
     
     print()
-    add_time_features(base_rep)
+    base_rep = add_time_features(base_rep)
 
     print(base_rep['start_time_hour', 'start_hour_sin', 'start_hour_cos'])
 
