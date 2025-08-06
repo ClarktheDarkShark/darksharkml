@@ -451,11 +451,10 @@ def _infer_grid_for_game(
     
     print()
     base_rep = add_time_features(base_rep)
+    print(base_rep[['day_of_week','start_time_hour','stream_duration','raw_tags']].head())
 
     # predict
     X_inf = base_rep[features]
-    print(X_inf[['game_category','stream_duration',
-             'avg_total_subscriptions_last_7']].head())
 
     preds  = pipeline.predict(X_inf)
 
@@ -508,6 +507,7 @@ def _infer_grid_for_game(
             keep="first",
         )
 
+    print(results[['start_time_hour','stream_duration','y_pred','tags']].head())
     return results.head(top_n).reset_index(drop=True)
 
 

@@ -599,6 +599,8 @@ def manual_prediction(
     y_pred = float(pipeline.predict(X)[0])
     # reuse compute_confidence logic on a single‐row DataFrame
     conf = compute_confidence(pd.DataFrame([row]), pipeline, features).iloc[0]
+
+    print(row[['day_of_week','start_time_hour','stream_duration'] + [f'tag_{t}' for t in tag_opts]])
     return {'y_pred': round(y_pred,2), 'conf': round(conf,2) if not np.isnan(conf) else '?'}
 
 
@@ -785,6 +787,8 @@ def show_feature_insights():
     game_insights = compute_game_insights(df_pred, selected_stream) if ready else []
     tag_insights  = compute_tag_insights(pipe, df_inf, features, selected_stream, cat_opts, start_opts, dur_opts, today) if ready else []
 
+    print(tag_opts)
+
     # 9) heatmap & feature scores
     time_preds = _infer_grid_for_game(
         pipe, df_inf, features,
@@ -797,8 +801,8 @@ def show_feature_insights():
         unique_scores=False,
         vary_tags=False,
     ) if ready else pd.DataFrame()
-    # print('\nTime Heat Predictions:')
-    # print(time_preds)
+    print('\nTime Heat Predictions:')
+    print(time_preds[['start_time_hour','stream_duration','y_pred','tags']])
 
     time_df = (
         time_preds.groupby('start_time_hour')
