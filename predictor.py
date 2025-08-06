@@ -293,9 +293,6 @@ def train_predictor(app, *, log_metrics=True):
     # 1) load
     df_daily = _load_daily_stats_df(app)
 
-    # 2) **add hour + cyclic features**
-    # add_time_features(df_daily)
-
     # 3) train on that enriched frame
     model, pipe_list, df_inf, feats = _train_model(df_daily)
 
@@ -383,9 +380,6 @@ def _infer_grid_for_game(
     # wrap in [ … ] so pandas sees one element
     base["raw_tags"] = [ last["raw_tags"] ]
 
-    # 3) add our cyclic time features
-    # add_time_features(base)
-
     # 4) if override_tags is provided, replace the list
     if override_tags is not None and not vary_tags:
         # again, wrap in a list so we get a single‐cell column
@@ -449,10 +443,10 @@ def _infer_grid_for_game(
     for col in ["game_category","start_time_hour","stream_duration"]:
         base_rep[col] = grid[col]
     
-    # print(base_rep[features].head().T.to_string())
-    
-    # print(base_rep[features].iloc[:5].T)
+    print()
     add_time_features(base_rep)
+
+    print(base_rep['start_time_hour', 'start_hour_sin', 'start_hour_cos'])
 
     # predict
     X_inf = base_rep[features]
