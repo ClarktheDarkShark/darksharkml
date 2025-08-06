@@ -469,7 +469,7 @@ def predict_time_grid(
     # 2)   ***clone*** the clean template *before* mutating it
     template = baseline_row.copy(deep=True)
     template["game_category"]    = game_category      # scalar string
-    template["stream_duration"]  = duration           # scalar int
+    template["stream_duration"]  = duration*60           # scalar int
 
     # 3) Repeat the template and splice in the varying hour
     base_rep = pd.DataFrame(
