@@ -789,18 +789,18 @@ def show_feature_insights():
         stream_name=selected_stream,
         override_tags=None,
         start_times=list(range(24)),
-        durations=[3],
+        durations=dur_opts,
         category_options=[selected_game],
         top_n=1000,
         unique_scores=False,
         vary_tags=False,
     ) if ready else pd.DataFrame()
-    print('\nTime Heat Predictions:')
-    print(time_preds)
+    # print('\nTime Heat Predictions:')
+    # print(time_preds)
 
     time_df = (
         time_preds.groupby('start_time_hour')
-                  .agg(avg_subs=('y_pred','mean'), confidence=('conf','mean'))
+                  .agg(avg_subs=('y_pred','max'), confidence=('conf','mean'))
                   .reset_index()
                   .rename(columns={'start_time_hour':'time'})
                   .round(2)

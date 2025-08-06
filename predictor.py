@@ -452,9 +452,9 @@ def _infer_grid_for_game(
 
     add_time_features(base_rep)
 
-    dbg_cols = ["start_time_hour", "start_hour_sin", "start_hour_cos",
-            "days_since_previous_stream", "stream_duration"]
-    print(base_rep[dbg_cols].head(20))
+    # dbg_cols = ["start_time_hour", "start_hour_sin", "start_hour_cos",
+    #         "days_since_previous_stream", "stream_duration"]
+    # print(base_rep[dbg_cols].head(20))
 
     # predict
     X_inf = base_rep[features]
