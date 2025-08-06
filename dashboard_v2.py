@@ -796,7 +796,7 @@ def show_feature_insights():
         vary_tags=False,
     ) if ready else pd.DataFrame()
     print('\nTime Heat Predictions:')
-    print(time_preds['y_pred'])
+    print(time_preds)
 
     time_df = (
         time_preds.groupby('start_time_hour')
