@@ -770,19 +770,19 @@ def show_feature_insights():
         if manual and ready else None
     )
 
-    tag_key = ",".join(sorted(tag_opts))
+    # tag_key = ",".join(sorted(tag_opts))
 
-    time_preds = (
-        cached_infer_grid(
-            id(pipe), selected_stream, selected_game, tag_key, today
-        )
-        if ready else pd.DataFrame()
-    )
+    # time_preds = (
+    #     cached_infer_grid(
+    #         id(pipe), selected_stream, selected_game, tag_key, today
+    #     )
+    #     if ready else pd.DataFrame()
+    # )
 
-    tag_insights = (
-        cached_tag_insights(id(pipe), selected_stream, today)
-        if ready else []
-    )
+    # tag_insights = (
+    #     cached_tag_insights(id(pipe), selected_stream, today)
+    #     if ready else []
+    # )
 
     # 8) insights tables
     game_insights = compute_game_insights(df_pred, selected_stream) if ready else []
