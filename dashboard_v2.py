@@ -767,14 +767,14 @@ def show_feature_insights():
         if manual and ready else None
     )
 
-    tag_key = ",".join(sorted(tag_opts))
+    # tag_key = ",".join(sorted(tag_opts))
 
-    time_preds = (
-        cached_infer_grid(
-            id(pipe), selected_stream, selected_game, tag_key, today
-        )
-        if ready else pd.DataFrame()
-    )
+    # time_preds = (
+    #     cached_infer_grid(
+    #         id(pipe), selected_stream, selected_game, tag_key, today
+    #     )
+    #     if ready else pd.DataFrame()
+    # )
 
     tag_insights = (
         cached_tag_insights(id(pipe), selected_stream, today)
