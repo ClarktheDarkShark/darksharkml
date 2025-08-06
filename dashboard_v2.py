@@ -789,7 +789,7 @@ def show_feature_insights():
     time_preds = _infer_grid_for_game(
         pipe, df_inf, features,
         stream_name=selected_stream,
-        override_tags=None,
+        override_tags=selected_tags if selected_tags else None,
         start_times=list(range(24)),
         durations=dur_opts,
         category_options=[selected_game],

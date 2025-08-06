@@ -425,6 +425,8 @@ def _infer_grid_for_game(
     if today_name is None:
         today_name = datetime.now(EST).strftime("%A")
 
+    base["day_of_week"] = today_name  
+    base["is_weekend"] = today_name in ("Saturday", "Sunday")
 
     if category_options is None:
         category_options = sorted(df_for_inf["game_category"].dropna().unique().tolist())
