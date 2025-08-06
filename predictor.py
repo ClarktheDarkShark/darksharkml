@@ -456,7 +456,9 @@ def _infer_grid_for_game(
     print(X_inf['start_hour_sin'])
     print(X_inf[['start_hour_sin','start_hour_cos']].head(10))
 
-    print("GRID COLUMNS:", X_inf.columns.tolist())
+    print("GRID day_of_week / is_weekend:", 
+      base_rep['day_of_week'].unique(), 
+      base_rep['is_weekend'].unique())
     preds  = pipeline.predict(X_inf)
 
     # approximate confidence via tree‑ensemble σ
