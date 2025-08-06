@@ -448,9 +448,9 @@ def load_artifacts():
 
 def predict_time_grid(
     baseline_row: pd.Series,
-    category_options: list[str],
+    category_options,
     start_times: list[int],
-    durations: list[int],
+    durations,
     selected_tags: list[str],
     tag_opts: list[str],
     pipeline,
@@ -462,23 +462,26 @@ def predict_time_grid(
     """
     # ------------------------------------------------------------------ #
     # 1) Cartesian product of the three dynamic dimensions
-    combos = list(itertools.product(category_options, start_times, durations))
+    combos = list(itertools.product(start_times))
     grid = pd.DataFrame(
         combos,
-        columns=["game_category", "start_time_hour", "stream_duration"],
+        columns=["start_time_hour"],
         dtype=baseline_row.dtype,          # keeps dtypes consistent
     )
 
     # ------------------------------------------------------------------ #
     # 2) Duplicate *rows* of the baseline, then graft on the grid columns
     #    (pd.concat is clearer/safer than the old .index.repeat trick)
+    base_rep['game_category'] = category_options
+    base_rep['stream_duration'] = durations
     base_rep = pd.concat(
         [baseline_row.to_frame().T] * len(grid),     # list of identical 1-row DFs
         ignore_index=True
     )
 
+
     # overwrite the varying columns with our grid values
-    base_rep[["game_category", "start_time_hour", "stream_duration"]] = grid
+    base_rep[["start_time_hour"]] = grid
 
     # ------------------------------------------------------------------ #
     # 3) Add time-derived features (vectorised)
@@ -498,6 +501,8 @@ def predict_time_grid(
 
     # ------------------------------------------------------------------ #
     # 5) Model inference + confidence
+    pd.set_option('display.max_rows', None)
+    print(base_rep.T)
     X                 = base_rep[features]
     base_rep["y_pred"] = pipeline.predict(X).astype(float)
     base_rep["conf"]   = compute_confidence(base_rep, pipeline, features)
@@ -880,9 +885,9 @@ def show_feature_insights():
 
     time_preds = predict_time_grid(
       baseline_row      = baseline,
-      category_options  = [selected_game],      # or multiple games
+      category_options  = selected_game,      # or multiple games
       start_times       = list(range(24)),
-      durations         = [4],                  # or any list of ints
+      durations         = 4,                  # or any list of ints
       selected_tags     = selected_tags,
       tag_opts          = tag_opts,
       pipeline          = pipe,
