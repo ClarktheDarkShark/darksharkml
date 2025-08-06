@@ -791,6 +791,8 @@ def show_feature_insights():
     print('tag_opts',tag_opts)
 
     # 9) heatmap & feature scores
+    print('\n******************************************************')
+    print('Just before function call...\n')
     time_preds = _infer_grid_for_game(
         pipe, df_inf, features,
         stream_name=selected_stream,
@@ -802,6 +804,7 @@ def show_feature_insights():
         unique_scores=False,
         vary_tags=False,
     ) if ready else pd.DataFrame()
+
     print('\nTime Heat Predictions:')
     print(time_preds[['start_time_hour','stream_duration','y_pred','tags']])
 
