@@ -486,7 +486,7 @@ def _infer_grid_for_game(
     
 
     preds  = pipeline.predict(X_inf)
-    print('X_inf pred:', preds)
+    # print('X_inf pred:', preds)
 
 
     # approximate confidence via tree‑ensemble σ
@@ -537,8 +537,8 @@ def _infer_grid_for_game(
             keep="first",
         )
 
-    print('results',results[['start_time_hour','stream_duration','y_pred','tags']].head(10))
-    print('heat map pred:', results["y_pred"].head(10))
+    # print('results',results[['start_time_hour','stream_duration','y_pred','tags']].head(10))
+    # print('heat map pred:', results["y_pred"].head(10))
     return results.head(top_n).reset_index(drop=True)
 
 

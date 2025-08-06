@@ -495,6 +495,7 @@ def predict_time_grid(
 
     # ------------------------------------------------------------------ #
     # 5) Model inference (vectorised)
+    pd.set_option('display.max_rows', None)
     print(base_rep.T)
     X = base_rep[features]
     base_rep["y_pred"] = pipeline.predict(X).astype(float)
