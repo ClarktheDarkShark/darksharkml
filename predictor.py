@@ -458,7 +458,7 @@ def _infer_grid_for_game(
              'avg_total_subscriptions_last_7']].head())
 
     
-    preds  = pipeline.predict(X_inf[0])
+    preds  = pipeline.predict(X_inf.tail(1))
     print(preds)
     exit()
 
