@@ -348,6 +348,8 @@ def _get_last_row_for_stream(df_for_inf: pd.DataFrame, stream_name: str):
         raise ValueError(f"No rows found for stream_name={stream_name!r}.")
     return rows.iloc[-1]
 
+
+
 def _infer_grid_for_game(
     pipeline,
     df_for_inf: pd.DataFrame,
@@ -454,6 +456,7 @@ def _infer_grid_for_game(
     print(X_inf['start_hour_sin'])
     print(X_inf[['start_hour_sin','start_hour_cos']].head(10))
 
+    print("GRID COLUMNS:", X_inf.columns.tolist())
     preds  = pipeline.predict(X_inf)
 
     # approximate confidence via tree‑ensemble σ
