@@ -808,7 +808,6 @@ def show_feature_insights():
     # 3) which stream?
     selected_stream = select_stream(request, df_inf)
     baseline = compute_baseline_row(df_inf, selected_stream) if ready else None
-    og_baseline = baseline.copy(deep=True)
 
     # 4) full‐frame predictions + confidence
     df_pred = predict_df(df_inf, pipe, features) if ready else df_inf.copy()
@@ -833,19 +832,19 @@ def show_feature_insights():
         if manual and ready else None
     )
 
-    # tag_key = ",".join(sorted(tag_opts))
+    tag_key = ",".join(sorted(tag_opts))
 
-    # time_preds = (
-    #     cached_infer_grid(
-    #         id(pipe), selected_stream, selected_game, tag_key, today
-    #     )
-    #     if ready else pd.DataFrame()
-    # )
+    time_preds = (
+        cached_infer_grid(
+            id(pipe), selected_stream, selected_game, tag_key, today
+        )
+        if ready else pd.DataFrame()
+    )
 
-    # tag_insights = (
-    #     cached_tag_insights(id(pipe), selected_stream, today)
-    #     if ready else []
-    # )
+    tag_insights = (
+        cached_tag_insights(id(pipe), selected_stream, today)
+        if ready else []
+    )
 
     # 8) insights tables
     game_insights = compute_game_insights(df_pred, selected_stream) if ready else []
@@ -856,54 +855,54 @@ def show_feature_insights():
     # 9) heatmap & feature scores
     # print('\n******************************************************')
     # print('Just before function call...\n')
-    # time_preds = _infer_grid_for_game(
-    #     pipe, df_inf, features,
-    #     stream_name=selected_stream,
-    #     override_tags=selected_tags if selected_tags else None,
-    #     start_times=list(range(24)),
-    #     durations=[4],
-    #     category_options=[selected_game],
-    #     top_n=1000,
-    #     unique_scores=False,
-    #     vary_tags=False,
-    # ) if ready else pd.DataFrame()
+    time_preds = _infer_grid_for_game(
+        pipe, df_inf, features,
+        stream_name=selected_stream,
+        override_tags=selected_tags if selected_tags else None,
+        start_times=list(range(24)),
+        durations=dur_opts,
+        category_options=[selected_game],
+        top_n=1000,
+        unique_scores=False,
+        vary_tags=False,
+    ) if ready else pd.DataFrame()
 
     # print('\nTime Heat Predictions:')
     # print(time_preds[['start_time_hour','stream_duration','y_pred','tags']])
 
-    # time_df = (
-    #     time_preds.groupby('start_time_hour')
-    #               .agg(avg_subs=('y_pred','max'), confidence=('conf','mean'))
-    #               .reset_index()
-    #               .rename(columns={'start_time_hour':'time'})
-    #               .round(2)
-    # ) if ready else pd.DataFrame(columns=['time','avg_subs','confidence'])
-    # heatmap_cells  = compute_heatmap_cells(time_df)
-    # feature_scores = compute_feature_scores(time_preds, selected_game)
-
-    time_preds = predict_time_grid(
-      baseline_row      = og_baseline,
-      game_category  = selected_game,      # or multiple games
-      start_times       = list(range(24)),
-      duration         = 4,                  # or any list of ints
-      selected_tags     = selected_tags,
-      tag_opts          = tag_opts,
-      pipeline          = pipe,
-      features          = features,
-  )
-
-    # Existing aggregation → heat-map cells
     time_df = (
-        time_preds.groupby("start_time_hour")
-                  .agg(avg_subs=("y_pred", "max"),
-                      confidence=("conf", "mean"))
+        time_preds.groupby('start_time_hour')
+                  .agg(avg_subs=('y_pred','max'), confidence=('conf','mean'))
                   .reset_index()
-                  .rename(columns={"start_time_hour": "time"})
+                  .rename(columns={'start_time_hour':'time'})
                   .round(2)
-    )
-
+    ) if ready else pd.DataFrame(columns=['time','avg_subs','confidence'])
     heatmap_cells  = compute_heatmap_cells(time_df)
     feature_scores = compute_feature_scores(time_preds, selected_game)
+
+  #   time_preds = predict_time_grid(
+  #     baseline_row      = baseline,
+  #     game_category  = selected_game,      # or multiple games
+  #     start_times       = list(range(24)),
+  #     duration         = 4,                  # or any list of ints
+  #     selected_tags     = selected_tags,
+  #     tag_opts          = tag_opts,
+  #     pipeline          = pipe,
+  #     features          = features,
+  # )
+
+  #   # Existing aggregation → heat-map cells
+  #   time_df = (
+  #       time_preds.groupby("start_time_hour")
+  #                 .agg(avg_subs=("y_pred", "max"),
+  #                     confidence=("conf", "mean"))
+  #                 .reset_index()
+  #                 .rename(columns={"start_time_hour": "time"})
+  #                 .round(2)
+  #   )
+
+  #   heatmap_cells  = compute_heatmap_cells(time_df)
+  #   feature_scores = compute_feature_scores(time_preds, selected_game)
 
     # 10) SHAP
     shap_plots = get_shap_blocks(pipe, df_pred, features) if ready else {'summary':'{}','dependence':'{}'}
