@@ -719,15 +719,13 @@ def get_shap_blocks(pipe, df_pred, features):
 
 
 
-
-
+pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
 # ─────────────────────────────────────────────────────────────────────────────
 # Route
 # ─────────────────────────────────────────────────────────────────────────────
 @dash_v2.route('/v2', methods=['GET'])
 def show_feature_insights():
     # 1) load
-    pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
     def get_pipeline(idx: int = 0):
       idx = max(0, min(idx, len(pipelines) - 1))
       return pipelines[idx]
@@ -803,7 +801,6 @@ def show_feature_insights():
         top_n=1000,
         unique_scores=False,
         vary_tags=False,
-        tag_opts=all_tags,
     ) if ready else pd.DataFrame()
     print('\nTime Heat Predictions:')
     print(time_preds[['start_time_hour','stream_duration','y_pred','tags']])
