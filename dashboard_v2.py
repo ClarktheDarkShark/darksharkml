@@ -494,6 +494,7 @@ def predict_time_grid(
 
     # 6) Inference (dtypes are now guaranteed correct)
     X                = base_rep[features]
+    print(X.head())
     base_rep["y_pred"] = pipeline.predict(X)
     base_rep["conf"]   = compute_confidence(base_rep, pipeline, features)
 
