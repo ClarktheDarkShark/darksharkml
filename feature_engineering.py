@@ -176,7 +176,9 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
     if 'raw_tags' in df.columns:
         features = base_feats + hist_cols + ['raw_tags']
     else:
-        features = base_feats + hist_cols
+        features = base_feats + hist_cols 
+        features['start_hour_sin_dup'] = base_feats['start_hours_sin']
+        features['start_hour_cos_dup'] = base_feats['start_hours_cos']
 
     df['game_category'] = df['game_category'].str.lower()
 
