@@ -473,7 +473,8 @@ def _infer_grid_for_game(
 
     # predict
     X_inf = base_rep[features]
-    print('X_inf:\n',X_inf[['day_of_week','start_time_hour','stream_duration']])
+    pd.set_option('display.max_rows', None)
+    print('X_inf:\n',X_inf.T)
     
 
     preds  = pipeline.predict(X_inf)
