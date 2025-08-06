@@ -493,10 +493,13 @@ def predict_time_grid(
         base_rep[f"tag_{t}"] = int(t in selected_tags)
 
     # 6) Inference (dtypes are now guaranteed correct)
-    X                = base_rep[features]
+    X                = base_rep[features].head(1)
     print(X.head())
     base_rep["y_pred"] = pipeline.predict(X)
+    print('y_pred:',base_rep["y_pred"])
     base_rep["conf"]   = compute_confidence(base_rep, pipeline, features)
+
+    print('base_rep:\n',X[['day_of_week','start_hour_sin','stream_duration', "raw_tags"]])
 
     return base_rep
 
@@ -656,7 +659,7 @@ def manual_prediction(
     # reuse compute_confidence logic on a single‐row DataFrame
     conf = compute_confidence(pd.DataFrame([row]), pipeline, features).iloc[0]
 
-    print('manual_prediction:\n',row[['day_of_week','start_time_hour','stream_duration'] + [f'tag_{t}' for t in tag_opts]])
+    print('manual_prediction:\n',X[['day_of_week','start_hour_sin','stream_duration', 'raw_tags']])
     print('manual pred:', y_pred)
 
     return {'y_pred': round(y_pred,2), 'conf': round(conf,2) if not np.isnan(conf) else '?'}
