@@ -898,6 +898,7 @@ def show_feature_insights():
     heatmap_cells  = compute_heatmap_cells(time_df)
     feature_scores = compute_feature_scores(time_preds, selected_game)
 
+
     time_preds_viewers = _infer_grid_for_game(
         pipelines[2], df_inf, features,
         stream_name=selected_stream,
