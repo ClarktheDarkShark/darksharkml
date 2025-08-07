@@ -319,10 +319,28 @@ TEMPLATE_V2 = '''
     <button type="submit" class="update-btn">Update Prediction</button>
   </form>
 
-  <!-- 1) Start Time Analysis (Heat Map) -->
+  <!-- 1) Start Time Analysis (Heat Map) Subs -->
   <h2>Start Time Analysis (Heat Map)</h2>
   <div class="heatmap">
-    {% for cell in heatmap_cells %}
+    {% for cell in heatmap_cells_viewers %}
+      <div class="heatcell-wrap">
+        <div class="heatcell-label">{{ cell.label }}</div>
+        <div class="heatcell" style="background: {{ cell.bg }};"
+             title="Subs: {{ cell.avg_subs }}, Confidence: {{ cell.confidence }}">
+          {{ cell.avg_subs }}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="note">
+    Red = lowest, Blue = highest predicted subs. Hover for details.
+  </div>
+
+    <!-- 1) Start Time Analysis (Heat Map) Viewers -->
+  <h2>Start Time Analysis (Heat Map)</h2>
+  <div class="heatmap">
+    {% for cell in heatmap_cells_viewers %}
       <div class="heatcell-wrap">
         <div class="heatcell-label">{{ cell.label }}</div>
         <div class="heatcell" style="background: {{ cell.bg }};"
@@ -880,6 +898,30 @@ def show_feature_insights():
     heatmap_cells  = compute_heatmap_cells(time_df)
     feature_scores = compute_feature_scores(time_preds, selected_game)
 
+    time_preds_viewers = _infer_grid_for_game(
+        pipelines[2], df_inf, features,
+        stream_name=selected_stream,
+        override_tags=selected_tags if selected_tags else None,
+        start_times=list(range(24)),
+        durations=dur_opts,
+        category_options=[selected_game],
+        top_n=1000,
+        unique_scores=False,
+        vary_tags=False,
+    ) if ready else pd.DataFrame()
+
+    # print('\nTime Heat Predictions:')
+    # print(time_preds[['start_time_hour','stream_duration','y_pred','tags']])
+
+    time_df_viewers = (
+        time_preds_viewers.groupby('start_time_hour')
+                  .agg(avg_subs=('y_pred','max'), confidence=('conf','mean'))
+                  .reset_index()
+                  .rename(columns={'start_time_hour':'time'})
+                  .round(2)
+    ) if ready else pd.DataFrame(columns=['time','avg_subs','confidence'])
+    heatmap_cells_viewers  = compute_heatmap_cells(time_df_viewers)
+    feature_scores_viewers = compute_feature_scores(time_preds_viewers, selected_game)
   #   time_preds = predict_time_grid(
   #     baseline_row      = baseline,
   #     game_category  = selected_game,      # or multiple games
@@ -925,6 +967,8 @@ def show_feature_insights():
         tag_insights=tag_insights,
         heatmap_cells=heatmap_cells,
         feature_scores=feature_scores,
+        heatmap_cells_viewers=heatmap_cells_viewers,
+        feature_scores_viewers=feature_scores_viewers,
         all_tags=all_tags,
         shap_plots=shap_plots,
         legend_tag_opts=legend_tags,
