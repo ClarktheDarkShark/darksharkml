@@ -309,7 +309,7 @@ def generate_shap_plots(pipeline, df: pd.DataFrame, features: list[str]) -> dict
         shap_vals,
         features=X_df,
         feature_names=fnames,
-        feature_display_range=20,
+        feature_display_range=slice(0, 20),
         show=False,
         return_objects=True
     )
