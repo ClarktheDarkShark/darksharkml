@@ -322,7 +322,7 @@ TEMPLATE_V2 = '''
   <!-- 1) Start Time Analysis (Heat Map) Subs -->
   <h2>Start Time Analysis (Heat Map)</h2>
   <div class="heatmap">
-    {% for cell in heatmap_cells_viewers %}
+    {% for cell in heatmap_cells %}
       <div class="heatcell-wrap">
         <div class="heatcell-label">{{ cell.label }}</div>
         <div class="heatcell" style="background: {{ cell.bg }};"
