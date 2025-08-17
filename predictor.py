@@ -69,7 +69,6 @@ _predictor_state = {
 # ATTEMPT TO LOAD PRE‐TRAINED ARTIFACTS (skip on‐dyno training)
 # ─────────────────────────────────────────────────────────────────────────────
 if os.path.exists(_ARTIFACT_PATH):
-    # print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
     try:
         data = joblib.load(_ARTIFACT_PATH)
         df_inf = data.get("df_for_inf")
@@ -128,7 +127,6 @@ def _load_daily_stats_df(app):
     # lowercase your game_category as before
     df_daily['game_category'] = df_daily['game_category'].str.lower()
 
-    # print(df_daily)
     return df_daily
 
 
@@ -140,14 +138,13 @@ def _load_daily_stats_df(app):
 def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, hist_cols = _prepare_training_frame(df_daily)
     df_clean = df_clean.dropna()
-    # df_clean = drop_outliers(df_clean, cols=['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change'] ,method='iqr', factor=1.5)
+    df_clean = drop_outliers(df_clean, cols=['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change'] ,method='iqr', factor=2.5)
 
 
     # target_list = ['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change']
 
     target_list = ['total_subscriptions', 'net_follower_change', 'avg_concurrent_viewers']
     pipe_list = []
-    # print(df_clean["net_follower_change"])
     for t in target_list:
         y = df_clean[t]
         # y = df_clean['net_follower_change']
@@ -178,12 +175,6 @@ def _train_model(df_daily: pd.DataFrame):
         tscv = TimeSeriesSplit(n_splits=5, gap=0)
 
         if mod == 'rf':
-
-            # # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
-            # pipeline, _ = _build_pipeline(X_train)
-            # for p in sorted(pipeline.get_params().keys()):
-            #     if p.startswith("reg__"):
-            #         print(p)
             params = {
                 'reg__regressor__n_estimators':    [500, 1000, 5000],
                 'reg__regressor__max_depth':       [5, 10, 15],
@@ -193,11 +184,6 @@ def _train_model(df_daily: pd.DataFrame):
                 'reg__regressor__bootstrap':       [True, False]
                 }
         elif mod == 'hgb':
-            # # BaggingRegressor wraps the TTR->HGB, so target inner params under estimator__regressor
-            # pipeline, _ = _build_pipeline(X_train)
-            # for p in sorted(pipeline.get_params().keys()):
-            #     if p.startswith("reg__"):
-            #         print(p)
             params = [
                 # {
                 #     'reg__loss': ['poisson'],
@@ -274,15 +260,13 @@ def _train_model(df_daily: pd.DataFrame):
         plt.plot([y_true.min(), y_true.max()],
                 [y_true.min(), y_true.max()],
                 'k--', lw=2)
-        plt.xlabel("Actual subscriptions")
-        plt.ylabel("Predicted subscriptions")
+        plt.xlabel(f"Actual {t}")
+        plt.ylabel(f"Predicted {t}")
         plt.title(f"R² = {r2_score(y_true, y_pred):.2f}")
         plt.show()
 
         df_for_inf = df_clean[['stream_name'] + feats].copy()
 
-        preds = model.predict(X_test)
-        # print(preds)
         pipe_list.append((model.best_estimator_, metrics))
 
 
@@ -325,9 +309,6 @@ def train_predictor(app, *, log_metrics=True):
     # _predictor_state["optional_start_times"] = observed_hours
     _predictor_state["optional_start_times"] = DEFAULT_START_TIMES
 
-    # print()
-    # print('Optional Start Times:')
-    # print(_predictor_state["optional_start_times"])
 
     if log_metrics:
         logging.info("Predictor trained for subs: %s", pipe_list[0][1])
@@ -342,9 +323,7 @@ def train_predictor(app, *, log_metrics=True):
 # INFERENCE HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 def _get_last_row_for_stream(df_for_inf: pd.DataFrame, stream_name: str):
-    # print(df_for_inf)
     rows = df_for_inf[df_for_inf["stream_name"] == stream_name]
-    # print(rows)
     if rows.empty:
         raise ValueError(f"No rows found for stream_name={stream_name!r}.")
     return rows.iloc[-1]
@@ -469,21 +448,11 @@ def _infer_grid_for_game(
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
     for col in ["game_category","start_time_hour","stream_duration"]:
         base_rep[col] = grid[col]
-    
-    # print()
-    # base_rep = add_time_features(base_rep)
-    # print('X_inf:\n',base_rep.T)
-    # print('base_rep',base_rep[['day_of_week','start_time_hour','stream_duration','raw_tags']].head())
 
     # predict
     X_inf = base_rep[features]
-    # pd.set_option('display.max_rows', None)
-    # print('X_inf:\n',X_inf.T)
     
-
     preds  = pipeline.predict(X_inf)
-    # print('X_inf pred:', preds)
-
 
     # approximate confidence via tree‑ensemble σ
     pre  = pipeline.named_steps["pre"]
@@ -533,8 +502,6 @@ def _infer_grid_for_game(
             keep="first",
         )
 
-    # print('results',results[['start_time_hour','stream_duration','y_pred','tags']].head(10))
-    # print('heat map pred:', results["y_pred"].head(10))
     return results.head(top_n).reset_index(drop=True)
 
 

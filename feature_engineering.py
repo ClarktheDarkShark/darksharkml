@@ -13,8 +13,8 @@ import pandas as pd
 from typing import Optional, List
 # import matplotlib.pyplot as plt
 
-# ROLL_WINDOWS = [1, 3, 7, 14]
-ROLL_WINDOWS = [7]
+ROLL_WINDOWS = [1, 3, 7, 14]
+# ROLL_WINDOWS = [7]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURE ENGINEERING
@@ -75,21 +75,17 @@ def _compute_days_since_prev(group: pd.DataFrame) -> pd.Series:
 def _compute_is_weekend(series: pd.Series) -> pd.Series:
     return series.isin(["Saturday","Sunday"]).astype(bool)
 
-def _add_historical_rollups(df: pd.DataFrame):
+def _add_historical_rollups(df: pd.DataFrame, extra_cols: Optional[list[str]] = None):
     df = df.copy()
     grouped = df.groupby('stream_name', group_keys=False)
-    def roll(col, n):
-        return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).mean())
-    def roll_mean(col, n):
-        return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).mean())
-    def roll_std(col, n):
-        return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).std())
-    def roll_min(col, n):
-        return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).min())
-    def roll_max(col, n):
-        return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).max())
+    def roll(col, n):       return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).mean())
+    def roll_mean(col, n):  return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).mean())
+    def roll_median(col, n):return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).median())
+    def roll_std(col, n):   return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).std())
+    def roll_min(col, n):   return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).min())
+    def roll_max(col, n):   return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).max())
 
-    cols = [
+    base_cols = [
         'total_subscriptions',
         'net_follower_change',
         'unique_viewers',
@@ -105,21 +101,32 @@ def _add_historical_rollups(df: pd.DataFrame):
         'category_changes',
         'start_time_hour'
     ]
+    # base_cols = [
+    #     'avg_sentiment_score', 
+    #     'min_sentiment_score', 
+    #     'max_sentiment_score',
+    #     'category_changes',
+    #     'start_time_hour'
+    # ]
+    cols = base_cols + (extra_cols or [])
+
     hist_cols = []
     for col in cols:
         for n in ROLL_WINDOWS:
             mean_col = f"avg_{col}_last_{n}"
+            median_col = f"median_{col}_last_{n}"
             std_col  = f"std_{col}_last_{n}"
             min_col  = f"min_{col}_last_{n}"
             max_col  = f"max_{col}_last_{n}"
 
             df[mean_col] = roll_mean(col, n).fillna(0)
+            df[median_col] = roll_median(col, n).fillna(0)
             df[std_col]  = roll_std(col, n).fillna(0)
             df[min_col]  = roll_min(col, n).fillna(0)
             df[max_col]  = roll_max(col, n).fillna(0)
 
-            # hist_cols.extend([mean_col, std_col, min_col, max_col])
-            hist_cols.extend([mean_col])
+            hist_cols.extend([mean_col, median_col, std_col, min_col, max_col])
+            # hist_cols.extend([mean_col])
 
     # forward-fill and ensure the very first value is zero
     for c in hist_cols:
@@ -159,6 +166,15 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
           .apply(_compute_days_since_prev)
           .reset_index(level=0, drop=True)
     )
+
+    # # ---- SCALE-FREE FEATURES ----
+    # df, rate_cols = _add_scale_free_features(df)
+
+    # # ---- RELATIVE LIFTS on your key metric ----
+    # df, lift_cols = _add_relative_lifts(df, metric='subs_per_100_avg_viewers', windows=(3,7,14))
+
+    # ---- ROLLUPS (include rate + lift columns so the model sees momentum) ----
+    # df, hist_cols = _add_historical_rollups(df, extra_cols=rate_cols + lift_cols)
     df, hist_cols = _add_historical_rollups(df)
 
     df = df.dropna(subset=['total_subscriptions', 'net_follower_change'] + hist_cols)
@@ -185,6 +201,9 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
     # print('Features:')
     # for f in features:
     #     print(f)
+    for f in features:
+        print(f)
+        
     return df, features, hist_cols
 
 
@@ -231,3 +250,98 @@ def drop_outliers(
         raise ValueError(f"Unknown method={method!r}, use 'iqr' or 'zscore'")
 
     return df.loc[mask].reset_index(drop=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCALE-FREE HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+EPS = 1e-9
+
+def _safe_div(num, den):
+    den = np.maximum(den, EPS)
+    return np.asarray(num, dtype=float) / np.asarray(den, dtype=float)
+
+def _hours(x):
+    # stream_duration is in minutes in your code; convert safely
+    return np.maximum(np.asarray(x, dtype=float) / 60.0, EPS)
+
+def _add_scale_free_features(df: pd.DataFrame):
+    """
+    Add per-viewer and per-hour versions of core counts + a few stable ratios.
+    Returns (df, new_cols_list).
+    """
+    df = df.copy()
+
+    # guard: columns may be missing in some exports
+    has = df.columns
+    v_avg  = df['avg_concurrent_viewers'] if 'avg_concurrent_viewers' in has else 0.0
+    v_uniq = df['unique_viewers']         if 'unique_viewers'         in has else 0.0
+    dur_h  = _hours(df['stream_duration'] if 'stream_duration' in has else 0.0)
+
+    # counts (fallback to zeros when not present)
+    subs   = df['total_subscriptions']    if 'total_subscriptions'    in has else 0.0
+    chats  = df['total_num_chats']        if 'total_num_chats'        in has else 0.0
+    emotes = df['total_emotes_used']      if 'total_emotes_used'      in has else 0.0
+    bits   = df['bits_donated']           if 'bits_donated'           in has else 0.0
+    raids  = df['raids_received']         if 'raids_received'         in has else 0.0
+    raidv  = df['raid_viewers_received']  if 'raid_viewers_received'  in has else 0.0
+    foll_d = df['net_follower_change']    if 'net_follower_change'    in has else 0.0
+    dons_c = df['donation_events_count']  if 'donation_events_count'  in has else 0.0
+    dons_a = df['total_donation_amount']  if 'total_donation_amount'  in has else 0.0
+
+    new_cols = []
+
+    # ---- Per-viewer (use avg viewers; uniq as backup when avg missing) ----
+    viewers_for_rate = np.where(np.asarray(v_avg)==0, np.asarray(v_uniq), np.asarray(v_avg))
+
+    df['subs_per_100_avg_viewers']   = 100.0 * _safe_div(subs, viewers_for_rate)
+    df['chats_per_viewer']           = _safe_div(chats, viewers_for_rate)
+    df['bits_per_viewer']            = _safe_div(bits, viewers_for_rate)
+    df['donations_per_100_viewers']  = 100.0 * _safe_div(dons_c, viewers_for_rate)
+    df['raid_viewers_per_viewer']    = _safe_div(raidv, viewers_for_rate)
+
+    new_cols += [
+        'subs_per_100_avg_viewers', 'chats_per_viewer', 'bits_per_viewer',
+        'donations_per_100_viewers', 'raid_viewers_per_viewer'
+    ]
+
+    # ---- Per-hour (normalize by duration) ----
+    df['subs_per_hour']      = _safe_div(subs,  dur_h)
+    df['chats_per_hour']     = _safe_div(chats, dur_h)
+    df['bits_per_hour']      = _safe_div(bits,  dur_h)
+    df['raids_per_hour']     = _safe_div(raids, dur_h)
+    df['raid_viewers_per_hr']= _safe_div(raidv, dur_h)
+    df['follows_per_hour']   = _safe_div(foll_d, dur_h)
+    df['donations_per_hour'] = _safe_div(dons_c, dur_h)
+    df['donation_amt_per_hr']= _safe_div(dons_a, dur_h)
+
+    new_cols += [
+        'subs_per_hour','chats_per_hour','bits_per_hour','raids_per_hour',
+        'raid_viewers_per_hr','follows_per_hour','donations_per_hour','donation_amt_per_hr'
+    ]
+
+    # ---- Stable ratios (behavioral, not size) ----
+    df['emotes_per_chat']    = _safe_div(emotes, chats)
+    df['chats_per_minute']   = _safe_div(chats, np.maximum(df.get('stream_duration', 0), EPS))
+    new_cols += ['emotes_per_chat','chats_per_minute']
+
+    return df, new_cols
+
+
+def _add_relative_lifts(df: pd.DataFrame, metric: str, windows=(3,7,14)):
+    """
+    For a given metric column, add:
+      - {metric}_vs_median_last_{n}
+      - {metric}_pct_of_median_last_{n}
+    based on per-streamer rolling medians from *past* sessions.
+    """
+    df = df.copy()
+    df = df.sort_values(['stream_name','stream_date','stream_start_time'])
+    grouped = df.groupby('stream_name', group_keys=False)
+    for n in windows:
+        med = grouped[metric].apply(lambda x: x.shift(1).rolling(n, min_periods=1).median())
+        med = med.fillna(med.median())  # fallback at very start of history
+        df[f'{metric}_vs_median_last_{n}']   = df[metric] - med
+        df[f'{metric}_pct_of_median_last_{n}'] = _safe_div(df[metric], np.maximum(med, EPS))
+    return df, [f'{metric}_vs_median_last_{n}' for n in windows] + \
+              [f'{metric}_pct_of_median_last_{n}' for n in windows]

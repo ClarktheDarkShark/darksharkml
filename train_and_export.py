@@ -23,6 +23,4 @@ if __name__ == "__main__":
         "metrics_list": metrics,
     }, "predictor_artifacts.joblib")
 
-    print(start_times)
-
     print("Artifacts saved to predictor_artifacts.joblib")
