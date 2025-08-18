@@ -1,1 +1,1 @@
-web: gunicorn main:app --preload --workers ${WEB_CONCURRENCY:-2} --threads 4 --timeout 300 --log-file -
+web: gunicorn main:app --workers 1 --threads 2 --timeout 300 --log-file -
