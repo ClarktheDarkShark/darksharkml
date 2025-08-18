@@ -829,7 +829,7 @@ metrics = metrics_list[model_idx]
 all_tags = extract_all_tags(pipelines) if ready else []
 
 # 3) which stream?
-selected_stream = select_stream(df_inf=df_inf)
+selected_stream = select_stream(request=None, df_inf=df_inf)
 baseline = compute_baseline_row(df_inf, selected_stream) if ready else None
 
 # 4) full‐frame predictions + confidence
