@@ -874,6 +874,7 @@ def show_feature_insights():
     )
 
 # Optional: avoid timeouts for iOS touch icon requests tying up the sole worker
-@dash_v2.route('/apple-touch-icon-precomposed.png', methods=['GET'])
+@app.route('/apple-touch-icon-precomposed.png', methods=['GET'])
+@app.route('/apple-touch-icon.png', methods=['GET'])
 def touch_icon():
     return ("", 204)
