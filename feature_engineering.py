@@ -85,29 +85,29 @@ def _add_historical_rollups(df: pd.DataFrame, extra_cols: Optional[list[str]] = 
     def roll_min(col, n):   return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).min())
     def roll_max(col, n):   return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).max())
 
-    base_cols = [
-        'total_subscriptions',
-        'net_follower_change',
-        'unique_viewers',
-        'peak_concurrent_viewers',
-        'stream_duration',
-        'total_num_chats',
-        'total_emotes_used',
-        'bits_donated',
-        'raids_received',
-        'avg_sentiment_score', 
-        'min_sentiment_score', 
-        'max_sentiment_score',
-        'category_changes',
-        'start_time_hour'
-    ]
     # base_cols = [
+    #     'total_subscriptions',
+    #     'net_follower_change',
+    #     'unique_viewers',
+    #     'peak_concurrent_viewers',
+    #     'stream_duration',
+    #     'total_num_chats',
+    #     'total_emotes_used',
+    #     'bits_donated',
+    #     'raids_received',
     #     'avg_sentiment_score', 
     #     'min_sentiment_score', 
     #     'max_sentiment_score',
     #     'category_changes',
     #     'start_time_hour'
     # ]
+    base_cols = [
+        'avg_sentiment_score', 
+        'min_sentiment_score', 
+        'max_sentiment_score',
+        'category_changes',
+        'start_time_hour'
+    ]
     cols = base_cols + (extra_cols or [])
 
     hist_cols = []
@@ -167,15 +167,15 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
           .reset_index(level=0, drop=True)
     )
 
-    # # ---- SCALE-FREE FEATURES ----
-    # df, rate_cols = _add_scale_free_features(df)
+    # ---- SCALE-FREE FEATURES ----
+    df, rate_cols = _add_scale_free_features(df)
 
-    # # ---- RELATIVE LIFTS on your key metric ----
-    # df, lift_cols = _add_relative_lifts(df, metric='subs_per_100_avg_viewers', windows=(3,7,14))
+    # ---- RELATIVE LIFTS on your key metric ----
+    df, lift_cols = _add_relative_lifts(df, metric='subs_per_100_avg_viewers', windows=(3,7,14))
 
     # ---- ROLLUPS (include rate + lift columns so the model sees momentum) ----
-    # df, hist_cols = _add_historical_rollups(df, extra_cols=rate_cols + lift_cols)
-    df, hist_cols = _add_historical_rollups(df)
+    df, hist_cols = _add_historical_rollups(df, extra_cols=rate_cols + lift_cols)
+    # df, hist_cols = _add_historical_rollups(df)
 
     df = df.dropna(subset=['total_subscriptions', 'net_follower_change'] + hist_cols)
     
