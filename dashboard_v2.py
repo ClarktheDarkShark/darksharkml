@@ -7,6 +7,7 @@ from shap_utils import generate_shap_plots
 import pytz
 import itertools
 from threading import Lock
+from typing import Optional, Any
 _shap_lock = Lock()
 
 
@@ -535,15 +536,31 @@ def extract_all_tags(pipelines) -> list[str]:
     return vect.get_feature_names_out().tolist()
 
 
-def select_stream(request, df_inf: pd.DataFrame, default='thelegendyagami') -> str:
+def select_stream(request: Optional[Any], df_inf: pd.DataFrame, default: str = "thelegendyagami") -> str:
     """
-    Pick a streamer from the URL params or fall back to default.
+    Pick a streamer from the URL params (if available) or fall back to default.
+    Works with:
+      - Flask request (uses .args)
+      - dict-like (uses .get)
+      - None (uses default)
     """
+    # keep your top-5 logic if other code depends on it
     top5 = df_inf['stream_name'].value_counts().head(5).index.tolist()
     if default not in top5:
         top5.append(default)
-    choice = request.args.get('stream', default)
-    return choice if choice in df_inf['stream_name'].unique() else default
+
+    choice = default
+    if request is not None:
+        try:
+            args = getattr(request, "args", request)  # Flask request or dict-like
+            if args is not None:
+                choice = args.get("stream", default)
+        except Exception:
+            # be defensive; fall back to default on any unexpected type
+            choice = default
+
+    valid_names = set(df_inf["stream_name"].unique())
+    return choice if choice in valid_names else default
 
 
 def compute_baseline_row(df_inf: pd.DataFrame, stream: str):
@@ -812,12 +829,11 @@ metrics = metrics_list[model_idx]
 all_tags = extract_all_tags(pipelines) if ready else []
 
 # 3) which stream?
-selected_stream = select_stream(request, df_inf)
+selected_stream = select_stream(df_inf)
 baseline = compute_baseline_row(df_inf, selected_stream) if ready else None
 
 # 4) full‐frame predictions + confidence
 df_pred = predict_df(df_inf, pipe, features) if ready else df_inf.copy()
-df_pred['conf'] = compute_confidence(df_pred, pipe, features) if ready else np.nan
 shap_plots = get_shap_blocks(pipe, df_pred, features) if ready else {'summary':'{}','dependence':'{}'}
 # ─────────────────────────────────────────────────────────────────────────────
 # Route
