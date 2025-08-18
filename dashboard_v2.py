@@ -803,9 +803,8 @@ pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load
 ready = bool(pipelines and df_inf is not None)
 today = datetime.now(pytz.timezone("US/Eastern")).strftime("%A")
 
-  # pick which model to show (default=0 for first pipeline)
-model_idx = int(request.args.get('model', 0))
-model_idx = max(0, min(model_idx, len(pipelines)-1))
+# pick which model to show (default=0 for first pipeline)
+model_idx = 0
 pipe    = pipelines[model_idx]
 metrics = metrics_list[model_idx]
 
@@ -831,25 +830,25 @@ def show_feature_insights():
       return pipelines[idx]
     
     
-    # ready = bool(pipelines and df_inf is not None)
-    # today = datetime.now(pytz.timezone("US/Eastern")).strftime("%A")
+    ready = bool(pipelines and df_inf is not None)
+    today = datetime.now(pytz.timezone("US/Eastern")).strftime("%A")
 
-    #   # pick which model to show (default=0 for first pipeline)
+    # pick which model to show (default=0 for first pipeline)
     # model_idx = int(request.args.get('model', 0))
-    # model_idx = max(0, min(model_idx, len(pipelines)-1))
-    # pipe    = pipelines[model_idx]
-    # metrics = metrics_list[model_idx]
+    model_idx = max(0, min(model_idx, len(pipelines)-1))
+    pipe    = pipelines[model_idx]
+    metrics = metrics_list[model_idx]
 
-    # # 2) all possible tags
-    # all_tags = extract_all_tags(pipelines) if ready else []
+    # 2) all possible tags
+    all_tags = extract_all_tags(pipelines) if ready else []
 
-    # # 3) which stream?
-    # selected_stream = select_stream(request, df_inf)
-    # baseline = compute_baseline_row(df_inf, selected_stream) if ready else None
+    # 3) which stream?
+    selected_stream = select_stream(request, df_inf)
+    baseline = compute_baseline_row(df_inf, selected_stream) if ready else None
 
-    # # 4) full‐frame predictions + confidence
-    # df_pred = predict_df(df_inf, pipe, features) if ready else df_inf.copy()
-    # df_pred['conf'] = compute_confidence(df_pred, pipe, features) if ready else np.nan
+    # 4) full‐frame predictions + confidence
+    df_pred = predict_df(df_inf, pipe, features) if ready else df_inf.copy()
+    df_pred['conf'] = compute_confidence(df_pred, pipe, features) if ready else np.nan
 
     # 5) game & tag options
     game_opts = compute_game_opts(df_pred, selected_stream)
