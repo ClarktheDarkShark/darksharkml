@@ -175,13 +175,13 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
 
     # # ---- ROLLUPS (include rate + lift columns so the model sees momentum) ----
     # df, hist_cols = _add_historical_rollups(df, extra_cols=rate_cols + lift_cols)
-    # df, hist_cols = _add_historical_rollups(df, extra_cols=rate_cols)
+    df, hist_cols = _add_historical_rollups(df, extra_cols=rate_cols)
     # df, hist_cols = _add_historical_rollups(df)
 
-    # df = df.dropna(subset=['total_subscriptions', 'net_follower_change'] + hist_cols)
+    df = df.dropna(subset=['total_subscriptions', 'net_follower_change'] + hist_cols)
 
-    hist_cols = rate_cols
-    df = df.dropna(subset=['total_subscriptions', 'net_follower_change'] + rate_cols)
+    # hist_cols = rate_cols
+    # df = df.dropna(subset=['total_subscriptions', 'net_follower_change'] + rate_cols)
     
     
     base_feats = [
