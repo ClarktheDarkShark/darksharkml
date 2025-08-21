@@ -138,7 +138,7 @@ def _load_daily_stats_df(app):
 def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, hist_cols = _prepare_training_frame(df_daily)
     df_clean = df_clean.dropna()
-    df_clean = drop_outliers(df_clean, cols=['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change'] ,method='iqr', factor=2.5)
+    df_clean = drop_outliers(df_clean, cols=['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change'] ,method='iqr', factor=5)
 
 
     # target_list = ['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change']
@@ -146,7 +146,11 @@ def _train_model(df_daily: pd.DataFrame):
     target_list = ['total_subscriptions', 'net_follower_change', 'avg_concurrent_viewers']
     pipe_list = []
     for t in target_list:
-        y = df_clean[t]
+        y = df_clean[t].values.astype(np.float32)
+        from sklearn.preprocessing import StandardScaler
+
+        scaler_y = StandardScaler()
+        y = scaler_y.fit_transform(y.reshape(-1, 1)).astype(np.float32)
         # y = df_clean['net_follower_change']
         X = df_clean[feats]
         cutoff = df_clean["stream_date"].quantile(0.8)
