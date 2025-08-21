@@ -730,7 +730,13 @@ def cached_tag_insights(model_idx: int, stream: str, today_name: str):
     )
 
 @cache.memoize(timeout=15*60)
-def cached_top_effect_tags(model_idx: int, stream: str, today_name: str, selected_game: str, n: int = 10) -> List[str]:
+def cached_top_effect_tags(
+    model_idx: int,
+    stream: str,
+    today_name: str,
+    selected_game: str,
+    n: int = 10
+) -> List[str]:
     """Lightweight tag effects to avoid combinatorial blowups."""
     model_idx = max(0, min(model_idx, len(pipelines) - 1))
     pipe = pipelines[model_idx]
@@ -745,8 +751,27 @@ def cached_top_effect_tags(model_idx: int, stream: str, today_name: str, selecte
         vary_tags=True,
         today_name=today_name
     )
-    eff = eff.loc[eff.delta_from_baseline.abs() > 0.01]
-    return eff.nlargest(n, 'delta_from_baseline')['tag'].tolist()
+
+    # filter small deltas
+    if 'delta_from_baseline' not in eff.columns:
+        return []
+
+    # coerce to numeric (handles strings, %, commas, etc.)
+    s = eff['delta_from_baseline'].astype(str)
+    pct_mask = s.str.contains('%', na=False)
+    s = s.str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip()
+    eff['delta_from_baseline'] = pd.to_numeric(s, errors='coerce')
+
+    if pct_mask.any():
+        eff.loc[pct_mask, 'delta_from_baseline'] = eff.loc[pct_mask, 'delta_from_baseline'] / 100.0
+
+    eff = eff.dropna(subset=['delta_from_baseline'])
+    eff = eff.loc[eff['delta_from_baseline'].abs() > 0.01]
+
+    if eff.empty:
+        return []
+
+    return eff.nlargest(n, 'delta_from_baseline')['tag'].astype(str).tolist()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Route
