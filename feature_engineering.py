@@ -13,8 +13,8 @@ import pandas as pd
 from typing import Optional, List
 # import matplotlib.pyplot as plt
 
-ROLL_WINDOWS = [1, 3, 7, 14]
-# ROLL_WINDOWS = [7]
+# ROLL_WINDOWS = [1, 3, 7, 14]
+ROLL_WINDOWS = [1,7]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURE ENGINEERING
@@ -102,8 +102,8 @@ def _add_historical_rollups(df: pd.DataFrame, extra_cols: Optional[list[str]] = 
     #     'start_time_hour'
     # ]
     base_cols = [
-        'avg_sentiment_score', 
-        'min_sentiment_score', 
+        'stream_duration',
+        'avg_sentiment_score',  
         'max_sentiment_score',
         'category_changes',
         'start_time_hour'

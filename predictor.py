@@ -147,10 +147,7 @@ def _train_model(df_daily: pd.DataFrame):
     pipe_list = []
     for t in target_list:
         y = df_clean[t].values.astype(np.float32)
-        from sklearn.preprocessing import StandardScaler
 
-        scaler_y = StandardScaler()
-        y = scaler_y.fit_transform(y.reshape(-1, 1)).astype(np.float32)
         # y = df_clean['net_follower_change']
         X = df_clean[feats]
         cutoff = df_clean["stream_date"].quantile(0.8)
@@ -177,6 +174,15 @@ def _train_model(df_daily: pd.DataFrame):
         
         # tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
         tscv = TimeSeriesSplit(n_splits=5, gap=0)
+        # from sklearn.model_selection import GroupKFold
+
+        # groups = df_clean.loc[train_mask, 'stream_name'].to_numpy()
+
+        # # pick number of folds safely (must be ≤ number of unique groups)
+        # n_groups = int(pd.Series(groups).nunique())
+        # n_splits = min(5, n_groups) if n_groups >= 2 else 2
+
+        # tscv = GroupKFold(n_splits=n_splits)
 
         if mod == 'rf':
             params = {
@@ -188,27 +194,14 @@ def _train_model(df_daily: pd.DataFrame):
                 'reg__regressor__bootstrap':       [True, False]
                 }
         elif mod == 'hgb':
-            params = [
-                # {
-                #     'reg__loss': ['poisson'],
-                #     'reg__learning_rate': [0.05, 0.1, 0.2],
-                #     'reg__max_leaf_nodes': [31, 63, 80],
-                #     'reg__l2_regularization': [0.1, 1.0, 10.0]
-                # }
-                # Tweedie‐loss grid (if your sklearn version supports it)
-                {
-                # 'reg__regressor__loss': [
-                #     'squared_error',    # classic MSE
-                #     'absolute_error',   # MAE
-                # ],
-                'reg__regressor__loss': ['poisson'],
-                # 'reg__regressor__loss': ['tweedie'],
-                # 'reg__regressor__power':          [1.1, 1.5, 1.9],
-                'reg__regressor__learning_rate':  [0.01, 0.05, 0.1],
-                'reg__regressor__max_leaf_nodes': [15, 31, 63],
-                'reg__regressor__l2_regularization':[0.0, 0.1, 1.0, 10.0],
-                },
-            ]
+            params = [{
+                'reg__regressor__loss': ['squared_error', 'absolute_error'],  # with TTR
+                'reg__regressor__learning_rate':  [0.03, 0.05, 0.1, 0.2],
+                'reg__regressor__max_leaf_nodes': [15, 31, 63, 127],
+                'reg__regressor__min_samples_leaf': [20, 50, 100],
+                'reg__regressor__l2_regularization': [0.0, 0.1, 1.0, 5.0],
+                'reg__regressor__max_bins': [64, 128, 255],
+            }]
         elif mod == 'svr':
             # tune the SVM’s C, epsilon and kernel
             params = {
@@ -236,6 +229,7 @@ def _train_model(df_daily: pd.DataFrame):
             error_score='raise',  # fail fast if something breaks
         )
         model.fit(X_train, y_train)
+        # model.fit(X_train, y_train, groups=groups)
 
         
         test_r2      = model.best_estimator_.score(X_test, y_test)
