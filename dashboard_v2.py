@@ -7,7 +7,6 @@ from shap_utils import generate_shap_plots
 import pytz
 import itertools
 from threading import Lock
-from typing import List, Dict, Optional, Any
 _shap_lock = Lock()
 
 
@@ -428,76 +427,145 @@ TEMPLATE_V2 = '''
 </html>
 '''
 
+
+@cache.memoize(timeout=15*60)   # 15-min cache
+def cached_infer_grid(pipe_id, stream, game, tag_key, today_name):
+    tags = tag_key.split(",") if tag_key else None
+    return _infer_grid_for_game(
+        next(p for p in pipelines if id(p) == pipe_id),
+        df_inf, features,
+        stream_name=stream,
+        override_tags=tags,         # string, see below
+        start_times=start_opts,
+        durations=dur_opts,
+        category_options=[game],
+        top_n=1000,
+        unique_scores=False,
+        vary_tags=False,
+        today_name=today_name,
+    )
+
+@cache.memoize(timeout=15*60)
+def cached_tag_insights(pipe_id, stream, today_name):
+    return compute_tag_insights(
+        next(p for p in pipelines if id(p) == pipe_id),
+        df_inf, features, stream,
+        cat_opts, start_opts, dur_opts,
+        today_name,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
 def load_artifacts():
-    """Load model + inference DataFrame + metadata."""
+    """
+    Load model + inference DataFrame + metadata.
+    """
     return get_predictor_artifacts()
 
 def predict_time_grid(
-    baseline_row: pd.Series,
-    start_times: List[int],
-    game_category: str,
-    duration: int,
-    selected_tags: List[str],
-    tag_opts: List[str],
-    pipeline,
-    features: List[str],
-    tz: str = "US/Eastern",
+        baseline_row: pd.Series,
+        start_times: list[int],
+        game_category: str,
+        duration: int,
+        selected_tags: list[str],
+        tag_opts: list[str],
+        pipeline,
+        features: list[str],
+        tz: str = "US/Eastern",
 ) -> pd.DataFrame:
-    """Return one row per hour with the same feature schema as manual_prediction."""
-    grid = pd.DataFrame({"start_time_hour": start_times}, dtype="int64")
+    """
+    Return one row per hour with the *same* feature schema that
+    `manual_prediction` feeds the model.
+    """
+    # 1) Build the grid (24 × 1 × 1)
+    grid = pd.DataFrame(
+        {"start_time_hour": start_times}, dtype="int64"
+    )
 
+    # 2)   ***clone*** the clean template *before* mutating it
     template = baseline_row.copy(deep=True)
-    template["game_category"] = game_category
-    template["stream_duration"] = duration * 60
+    template["game_category"]    = game_category      # scalar string
+    template["stream_duration"]  = duration*60           # scalar int
 
+    # 3) Repeat the template and splice in the varying hour
     base_rep = pd.DataFrame(
         np.repeat(template.values[None, :], len(grid), axis=0),
         columns=template.index
     )
     base_rep["start_time_hour"] = grid["start_time_hour"].astype("int64")
 
-    now = datetime.now(pytz.timezone(tz))
-    dow = now.strftime("%A")
+    # 4) Derived time features
+    now      = datetime.now(pytz.timezone(tz))
+    dow      = now.strftime("%A")
+    hours    = base_rep["start_time_hour"].astype(float)
 
-    base_rep["day_of_week"] = dow
-    base_rep["is_weekend"] = dow in ("Saturday", "Sunday")
+    base_rep["day_of_week"]     = dow
+    base_rep["is_weekend"]      = dow in ("Saturday", "Sunday")
+    # base_rep["start_hour_sin"]  = np.sin(2 * np.pi * hours / 24)
+    # base_rep["start_hour_cos"]  = np.cos(2 * np.pi * hours / 24)
 
+    # 5) Tag one-hots
     for t in tag_opts:
         base_rep[f"tag_{t}"] = int(t in selected_tags)
 
-    X = base_rep[features]
+    # 6) Inference (dtypes are now guaranteed correct)
+    X                = base_rep[features]
+    print(X.head())
     base_rep["y_pred"] = pipeline.predict(X)
-    base_rep["conf"] = compute_confidence(base_rep, pipeline, features)
+    print('y_pred:',base_rep["y_pred"])
+    base_rep["conf"]   = compute_confidence(base_rep, pipeline, features)
+
+    # pd.set_option('display.max_rows', None)
+    # print('base_rep:\n',X[['day_of_week','start_hour_sin','stream_duration', "raw_tags"]].T)
+
     return base_rep
 
-def extract_all_tags(pipelines) -> List[str]:
-    """Pull the vectorizer’s vocabulary out of the FIRST pipeline in the list."""
+
+
+def extract_all_tags(pipelines) -> list[str]:
+    """
+    Pull the vectorizer’s vocabulary out of the FIRST pipeline in the list.
+    """
     first_pipe = pipelines[0]
-    pre = first_pipe.named_steps['pre']
+    pre      = first_pipe.named_steps['pre']
     tag_pipe = pre.named_transformers_['tags']
-    vect = tag_pipe.named_steps['vectorize']
+    vect     = tag_pipe.named_steps['vectorize']
     return vect.get_feature_names_out().tolist()
 
-def select_stream(request, df_inf: pd.DataFrame, default: str = 'thelegendyagami') -> str:
-    """Pick a streamer from the URL params or fall back to default."""
+
+def select_stream(request, df_inf: pd.DataFrame, default='thelegendyagami') -> str:
+    """
+    Pick a streamer from the URL params or fall back to default.
+    """
     top5 = df_inf['stream_name'].value_counts().head(5).index.tolist()
     if default not in top5:
         top5.append(default)
     choice = request.args.get('stream', default)
     return choice if choice in df_inf['stream_name'].unique() else default
 
+
 def compute_baseline_row(df_inf: pd.DataFrame, stream: str):
-    """The “last row” for manual override defaults."""
+    """
+    The “last row” for manual override defaults.
+    """
     return _get_last_row_for_stream(df_inf, stream)
 
-def predict_df(df_inf: pd.DataFrame, pipeline, features: List[str]) -> pd.DataFrame:
-    """Add y_pred column to entire inference frame."""
+
+def predict_df(df_inf: pd.DataFrame, pipeline, features: list[str]) -> pd.DataFrame:
+    """
+    Add y_pred column to entire inference frame.
+    """
     df = df_inf.copy()
     df['y_pred'] = pipeline.predict(df[features])
     return df
 
-def compute_confidence(df: pd.DataFrame, pipeline, features: List[str]) -> pd.Series:
-    """1 / (1 + σ) across tree preds, or constant fallback."""
+
+def compute_confidence(df: pd.DataFrame, pipeline, features: list[str]) -> pd.Series:
+    """
+    1 / (1 + σ) across tree preds, or constant fallback.
+    """
     try:
         pre = pipeline.named_steps['pre']
         X_pre = pre.transform(df[features])
@@ -510,23 +578,31 @@ def compute_confidence(df: pd.DataFrame, pipeline, features: List[str]) -> pd.Se
         else:
             sigma = np.full(len(df), fill_value=np.mean(df['y_pred']) * 0.01)
         conf = 1.0 / (1.0 + sigma)
-        return pd.Series(conf, index=df.index)
+        return pd.Series(conf, index=df.index)   
     except Exception:
         return pd.Series(np.nan, index=df.index)
 
-def compute_game_opts(df_pred: pd.DataFrame, stream: str) -> List[str]:
-    """Legend’s own games first, then top‐10 by mean y_pred."""
+
+def compute_game_opts(df_pred: pd.DataFrame, stream: str) -> list[str]:
+    """
+    Legend’s own games first, then top‐10 by mean y_pred.
+    """
     legend = df_pred.loc[df_pred.stream_name == stream, 'game_category'].unique().tolist()
     top10 = (
-        df_pred.groupby('game_category')['y_pred'].mean()
-               .nlargest(10)
-               .index
-               .tolist()
+        df_pred
+        .groupby('game_category')['y_pred']
+        .mean()
+        .nlargest(10)
+        .index
+        .tolist()
     )
     return legend + [g for g in top10 if g not in legend]
 
-def compute_legend_tags(df_pred: pd.DataFrame, stream: str) -> List[str]:
-    """All raw_tags ever used by this streamer."""
+
+def compute_legend_tags(df_pred: pd.DataFrame, stream: str) -> list[str]:
+    """
+    All raw_tags ever used by this streamer.
+    """
     rows = df_pred.loc[df_pred.stream_name == stream, 'raw_tags'].dropna()
     seen: set[str] = set()
     for tag_list in rows:
@@ -534,9 +610,97 @@ def compute_legend_tags(df_pred: pd.DataFrame, stream: str) -> List[str]:
             seen.add(tag)
     return list(seen)
 
+
+def compute_top_effect_tags(pipeline, df_inf, features, stream, cat_opts, start_opts, dur_opts, today_name, n=10) -> list[str]:
+    """
+    Get the top‐n tags by delta_from_baseline.
+    """
+    eff = _infer_grid_for_game(
+        pipeline, df_inf, features,
+        stream_name=stream,
+        start_times=start_opts,
+        durations=dur_opts,
+        category_options=cat_opts,
+        top_n=100,
+        unique_scores=True,
+        vary_tags=True,
+        today_name=today_name
+    )
+    eff = eff.loc[eff.delta_from_baseline.abs() > 0.01]
+    return eff.nlargest(n, 'delta_from_baseline')['tag'].tolist()
+
+
+def union_preserve(first: list[str], second: list[str]) -> list[str]:
+    """
+    Return first + [s for s in second if s not in first].
+    """
+    return first + [s for s in second if s not in first]
+
+
+def parse_int(val, default=0) -> int:
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def manual_prediction(
+    baseline_row: pd.Series,
+    selected_game: str,
+    selected_start_time: int,
+    selected_tags: list[str],
+    tag_opts: list[str],
+    pipeline,
+    features: list[str],
+    tz='US/Eastern'
+) -> dict:
+    """
+    Override baseline_row with the form selections and re‐predict.
+    """
+    row = baseline_row.copy()
+    # 1) set categorical & time fields
+    row['game_category'] = selected_game
+    row['start_time_hour'] = selected_start_time
+    now = datetime.now(pytz.timezone(tz))
+    dow = now.strftime('%A')
+    row.update({
+        'day_of_week': dow,
+        # 'start_hour_sin': np.sin(2*np.pi*selected_start_time/24),
+        # 'start_hour_cos': np.cos(2*np.pi*selected_start_time/24),
+        'is_weekend': dow in ('Saturday','Sunday')
+    })
+    # 2) set tags
+    for t in tag_opts:
+        row[f'tag_{t}'] = int(t in selected_tags)
+    # 3) predict + confidence
+    X = row[features].to_frame().T
+    y_pred = float(pipeline.predict(X)[0])
+    # reuse compute_confidence logic on a single‐row DataFrame
+    conf = compute_confidence(pd.DataFrame([row]), pipeline, features).iloc[0]
+    pd.set_option('display.max_rows', None)
+
+    # print('manual_prediction:\n',X[['day_of_week','start_hour_sin','stream_duration', 'raw_tags']].T)
+    # print('manual pred:', y_pred)
+
+    return {'y_pred': round(y_pred,2), 'conf': round(conf,2) if not np.isnan(conf) else '?'}
+
+
+def compute_game_insights(df_pred: pd.DataFrame, stream: str) -> list[dict]:
+    df = df_pred.query("stream_name == @stream")
+    out = (
+        df.groupby('game_category')
+          .agg(avg_subs=('y_pred','mean'), confidence=('conf','mean'))
+          .round(2)
+          .reset_index()
+          .rename(columns={'game_category':'game'})
+          .nlargest(10, 'avg_subs')
+    )
+    return out.to_dict('records')
+
+
 def compute_tag_insights(
     pipeline, df_inf, features, stream, cat_opts, start_opts, dur_opts, today_name
-) -> List[Dict]:
+) -> list[dict]:
     te = _infer_grid_for_game(
         pipeline, df_inf, features,
         stream_name=stream,
@@ -551,67 +715,21 @@ def compute_tag_insights(
     te = te.loc[te.delta_from_baseline.abs() > 0.01]
     te[['delta_from_baseline','y_pred']] = te[['delta_from_baseline','y_pred']].round(2)
     if 'tag' in te.columns:
-        return (te[['tag','delta_from_baseline','y_pred']]
-                .rename(columns={'tag':'tags','delta_from_baseline':'delta','y_pred':'subs'})
-                .to_dict('records'))
-    return (te[['tags','delta_from_baseline','y_pred']]
-            .rename(columns={'delta_from_baseline':'delta','y_pred':'subs'})
-            .to_dict('records'))
+        return te[['tag','delta_from_baseline','y_pred']]\
+            .rename(columns={'tag':'tags','delta_from_baseline':'delta','y_pred':'subs'})\
+            .to_dict('records')
+    # fallback if column is already 'tags'
+    return te[['tags','delta_from_baseline','y_pred']]\
+        .rename(columns={'delta_from_baseline':'delta','y_pred':'subs'})\
+        .to_dict('records')
 
-def union_preserve(first: List[str], second: List[str]) -> List[str]:
-    """Return first + [s for s in second if s not in first]."""
-    return first + [s for s in second if s not in first]
 
-def parse_int(val, default=0) -> int:
-    try:
-        return int(val)
-    except (TypeError, ValueError):
-        return default
-
-def manual_prediction(
-    baseline_row: pd.Series,
-    selected_game: str,
-    selected_start_time: int,
-    selected_tags: List[str],
-    tag_opts: List[str],
-    pipeline,
-    features: List[str],
-    tz='US/Eastern'
-) -> Dict[str, float]:
-    """Override baseline_row with the form selections and re‐predict."""
-    row = baseline_row.copy()
-    row['game_category'] = selected_game
-    row['start_time_hour'] = selected_start_time
-    now = datetime.now(pytz.timezone(tz))
-    dow = now.strftime('%A')
-    row.update({
-        'day_of_week': dow,
-        'is_weekend': dow in ('Saturday','Sunday')
-    })
-    for t in tag_opts:
-        row[f'tag_{t}'] = int(t in selected_tags)
-    X = row[features].to_frame().T
-    y_pred = float(pipeline.predict(X)[0])
-    conf = compute_confidence(pd.DataFrame([row]), pipeline, features).iloc[0]
-    return {'y_pred': round(y_pred, 2), 'conf': round(conf, 2) if not np.isnan(conf) else '?'}
-
-def compute_game_insights(df_pred: pd.DataFrame, stream: str) -> List[Dict]:
-    df = df_pred.query("stream_name == @stream")
-    out = (
-        df.groupby('game_category')
-          .agg(avg_subs=('y_pred','mean'), confidence=('conf','mean'))
-          .round(2)
-          .reset_index()
-          .rename(columns={'game_category':'game'})
-          .nlargest(10, 'avg_subs')
-    )
-    return out.to_dict('records')
-
-def compute_heatmap_cells(time_df: pd.DataFrame) -> List[Dict]:
-    """Build the 24‐cell heatmap with color interpolation."""
+def compute_heatmap_cells(time_df: pd.DataFrame) -> list[dict]:
+    """
+    Build the 24‐cell heatmap with color interpolation.
+    """
     subs = time_df['avg_subs']
-    lo, hi = np.percentile(subs, 5), np.percentile(subs, 95)
-
+    lo, hi = np.percentile(subs,5), np.percentile(subs,95)
     def interp(val):
         v = max(lo, min(val, hi))
         if hi == lo:
@@ -631,14 +749,17 @@ def compute_heatmap_cells(time_df: pd.DataFrame) -> List[Dict]:
         })
     return cells
 
-def compute_feature_scores(time_preds: pd.DataFrame, selected_game: str, top_n_tags: int = 3) -> List[Dict]:
-    feature_scores: List[Dict] = []
 
+def compute_feature_scores(time_preds, selected_game, top_n_tags=3):
+    feature_scores = []
+
+    # Duration
     duration_scores = (
-        time_preds.groupby('stream_duration')['y_pred']
-                  .mean()
-                  .round(2)
-                  .reset_index()
+        time_preds
+        .groupby('stream_duration')['y_pred']
+        .mean()
+        .round(2)
+        .reset_index()
     )
     for _, r in duration_scores.iterrows():
         feature_scores.append({
@@ -647,12 +768,14 @@ def compute_feature_scores(time_preds: pd.DataFrame, selected_game: str, top_n_t
             'score': f"{r.y_pred:.2f}"
         })
 
+    # Category
     feature_scores.append({
         'feature': 'Category',
         'value': selected_game,
         'score': f"{time_preds['y_pred'].mean():.2f}"
     })
 
+    # Tags—only if we actually have deltas
     if 'delta_from_baseline' in time_preds.columns:
         top = time_preds.nlargest(top_n_tags, 'delta_from_baseline')
         for _, r in top.iterrows():
@@ -664,184 +787,108 @@ def compute_feature_scores(time_preds: pd.DataFrame, selected_game: str, top_n_t
 
     return feature_scores
 
-# SHAP cache/lock assumed defined elsewhere
+
+
 def get_shap_blocks(pipe, df_pred, features):
     pid = id(pipe)
     with _shap_lock:
         if _shap_cache.get("pipe_id") != pid:
-            try:
-                _shap_cache["pipe_id"] = pid
-                _shap_cache["plots"] = generate_shap_plots(pipe, df_pred, features)
-            except Exception:
-                _shap_cache["plots"] = {"summary": "{}", "dependence": "{}"}
+            _shap_cache["pipe_id"] = pid
+            _shap_cache["plots"]  = generate_shap_plots(pipe, df_pred, features)
     return _shap_cache["plots"]
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Load artifacts ONCE at module import
-# ─────────────────────────────────────────────────────────────────────────────
+
+
 pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
-ALL_TAGS = extract_all_tags(pipelines) if pipelines else []
-TZ = pytz.timezone("US/Eastern")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Cached computations — KEY BY model_idx (stable), not id(pipe)
-# ─────────────────────────────────────────────────────────────────────────────
-
-@cache.memoize(timeout=15*60)
-def cached_df_pred(model_idx: int):
-    model_idx = max(0, min(model_idx, len(pipelines) - 1))
-    pipe = pipelines[model_idx]
-    dfp = predict_df(df_inf, pipe, features).copy()
-    dfp['conf'] = compute_confidence(dfp, pipe, features)
-    return dfp
-
-@cache.memoize(timeout=15*60)
-def cached_shap_blocks(model_idx: int):
-    model_idx = max(0, min(model_idx, len(pipelines) - 1))
-    pipe = pipelines[model_idx]
-    dfp  = cached_df_pred(model_idx)
-    return get_shap_blocks(pipe, dfp, features)
-
-@cache.memoize(timeout=15*60)
-def cached_infer_grid(model_idx: int, stream: str, game: str, tag_key: str, today_name: str):
-    model_idx = max(0, min(model_idx, len(pipelines) - 1))
-    pipe = pipelines[model_idx]
-    tags = tag_key.split(",") if tag_key else None
-    return _infer_grid_for_game(
-        pipe, df_inf, features,
-        stream_name=stream,
-        override_tags=tags,
-        start_times=start_opts,
-        durations=dur_opts,
-        category_options=[game],
-        top_n=1000,
-        unique_scores=False,
-        vary_tags=False,
-        today_name=today_name,
-    )
-
-@cache.memoize(timeout=15*60)
-def cached_tag_insights(model_idx: int, stream: str, today_name: str):
-    model_idx = max(0, min(model_idx, len(pipelines) - 1))
-    pipe = pipelines[model_idx]
-    return compute_tag_insights(
-        pipe, df_inf, features, stream,
-        cat_opts, start_opts, dur_opts, today_name
-    )
-
-@cache.memoize(timeout=15*60)
-def cached_top_effect_tags(
-    model_idx: int,
-    stream: str,
-    today_name: str,
-    selected_game: str,
-    n: int = 10
-) -> List[str]:
-    """Lightweight tag effects to avoid combinatorial blowups."""
-    model_idx = max(0, min(model_idx, len(pipelines) - 1))
-    pipe = pipelines[model_idx]
-    eff = _infer_grid_for_game(
-        pipe, df_inf, features,
-        stream_name=stream,
-        start_times=[0, 6, 12, 18],  # probe subset
-        durations=dur_opts[:2],      # first two durations
-        category_options=[selected_game],
-        top_n=100,
-        unique_scores=True,
-        vary_tags=True,
-        today_name=today_name
-    )
-
-    # filter small deltas
-    if 'delta_from_baseline' not in eff.columns:
-        return []
-
-    # coerce to numeric (handles strings, %, commas, etc.)
-    s = eff['delta_from_baseline'].astype(str)
-    pct_mask = s.str.contains('%', na=False)
-    s = s.str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip()
-    eff['delta_from_baseline'] = pd.to_numeric(s, errors='coerce')
-
-    if pct_mask.any():
-        eff.loc[pct_mask, 'delta_from_baseline'] = eff.loc[pct_mask, 'delta_from_baseline'] / 100.0
-
-    eff = eff.dropna(subset=['delta_from_baseline'])
-    eff = eff.loc[eff['delta_from_baseline'].abs() > 0.01]
-
-    if eff.empty:
-        return []
-
-    return eff.nlargest(n, 'delta_from_baseline')['tag'].astype(str).tolist()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Route
 # ─────────────────────────────────────────────────────────────────────────────
-
 @dash_v2.route('/v2', methods=['GET'])
 def show_feature_insights():
-    # readiness
+    # 1) load
+    def get_pipeline(idx: int = 0):
+      idx = max(0, min(idx, len(pipelines) - 1))
+      return pipelines[idx]
+    
+    # pipelines, df_inf, features, cat_opts, start_opts, dur_opts, metrics_list = load_artifacts()
     ready = bool(pipelines and df_inf is not None)
-    if not ready:
-        return "Server warming up", 503
+    today = datetime.now(pytz.timezone("US/Eastern")).strftime("%A")
 
-    today = datetime.now(TZ).strftime("%A")
-
-    # model selection
+      # pick which model to show (default=0 for first pipeline)
     model_idx = int(request.args.get('model', 0))
     model_idx = max(0, min(model_idx, len(pipelines)-1))
-    pipe      = pipelines[model_idx]
-    metrics   = metrics_list[model_idx]
+    pipe    = pipelines[model_idx]
+    metrics = metrics_list[model_idx]
 
-    # stream/baseline
+    # 2) all possible tags
+    all_tags = extract_all_tags(pipelines) if ready else []
+
+    # 3) which stream?
     selected_stream = select_stream(request, df_inf)
-    baseline        = compute_baseline_row(df_inf, selected_stream)
+    baseline = compute_baseline_row(df_inf, selected_stream) if ready else None
 
-    # frame predictions (CACHED)
-    df_pred = cached_df_pred(model_idx)
+    # 4) full‐frame predictions + confidence
+    df_pred = predict_df(df_inf, pipe, features) if ready else df_inf.copy()
+    df_pred['conf'] = compute_confidence(df_pred, pipe, features) if ready else np.nan
 
-    # options & tags
-    game_opts     = compute_game_opts(df_pred, selected_stream)
-    selected_game = request.args.get('game', game_opts[0] if game_opts else '')
-    legend_tags   = compute_legend_tags(df_pred, selected_stream)
-    top_tags      = cached_top_effect_tags(model_idx, selected_stream, today, selected_game)
-    tag_opts      = union_preserve(legend_tags, top_tags)
-    all_tags      = union_preserve(legend_tags, ALL_TAGS)
+    # 5) game & tag options
+    game_opts = compute_game_opts(df_pred, selected_stream)
+    legend_tags = compute_legend_tags(df_pred, selected_stream)
+    top_tags    = compute_top_effect_tags(pipe, df_inf, features, selected_stream, cat_opts, start_opts, dur_opts, today)
+    tag_opts    = union_preserve(legend_tags, top_tags)
+    all_tags    = union_preserve(legend_tags, all_tags)
 
-    # inputs
+    # 6) parse user inputs
+    selected_game       = request.args.get('game', game_opts[0] if game_opts else '')
     selected_start_time = parse_int(request.args.get('start_time'), default=start_opts[0])
     selected_tags       = request.args.getlist('tags')
-    manual              = request.args.get('manual') in ('1','true','True','yes')
+    manual              = bool(request.args.get('manual'))
 
-    # FAST PATH for manual requests — skip heavy blocks
-    if manual:
-        pred_result = manual_prediction(baseline, selected_game, selected_start_time,
-                                        selected_tags, tag_opts, pipe, features)
-        return render_template_string(
-            TEMPLATE_V2,
-            today_name=today,
-            stream_opts=sorted(df_inf['stream_name'].unique()),
-            game_opts=game_opts,
-            start_opts=start_opts,
-            tag_opts=tag_opts,
-            selected_stream=selected_stream,
-            selected_game=selected_game,
-            selected_start_time=selected_start_time,
-            selected_tags=selected_tags,
-            pred_result=pred_result,
-            game_insights=[],
-            tag_insights=[],
-            heatmap_cells=[],
-            feature_scores=[],
-            heatmap_cells_viewers=[],
-            feature_scores_viewers=[],
-            all_tags=all_tags,
-            shap_plots={'summary':'{}','dependence':'{}'},
-            legend_tag_opts=legend_tags,
+    # 7) manual override prediction
+    pred_result = (
+        manual_prediction(baseline, selected_game, selected_start_time, selected_tags, tag_opts, pipe, features)
+        if manual and ready else None
+    )
+
+    tag_key = ",".join(sorted(tag_opts))
+
+    time_preds = (
+        cached_infer_grid(
+            id(pipe), selected_stream, selected_game, tag_key, today
         )
+        if ready else pd.DataFrame()
+    )
 
-    # time grid (CACHED) — single computation, do NOT overwrite
-    tag_key    = ",".join(sorted(tag_opts))
-    time_preds = cached_infer_grid(model_idx, selected_stream, selected_game, tag_key, today)
+    tag_insights = (
+        cached_tag_insights(id(pipe), selected_stream, today)
+        if ready else []
+    )
+
+    # 8) insights tables
+    game_insights = compute_game_insights(df_pred, selected_stream) if ready else []
+    tag_insights  = compute_tag_insights(pipe, df_inf, features, selected_stream, cat_opts, start_opts, dur_opts, today) if ready else []
+
+    # print('tag_opts',tag_opts)
+
+    # 9) heatmap & feature scores
+    # print('\n******************************************************')
+    # print('Just before function call...\n')
+    time_preds = _infer_grid_for_game(
+        pipe, df_inf, features,
+        stream_name=selected_stream,
+        override_tags=selected_tags if selected_tags else None,
+        start_times=list(range(24)),
+        durations=dur_opts,
+        category_options=[selected_game],
+        top_n=1000,
+        unique_scores=False,
+        vary_tags=False,
+    ) if ready else pd.DataFrame()
+
+    # print('\nTime Heat Predictions:')
+    # print(time_preds[['start_time_hour','stream_duration','y_pred','tags']])
 
     time_df = (
         time_preds.groupby('start_time_hour')
@@ -849,33 +896,64 @@ def show_feature_insights():
                   .reset_index()
                   .rename(columns={'start_time_hour':'time'})
                   .round(2)
-    )
+    ) if ready else pd.DataFrame(columns=['time','avg_subs','confidence'])
     heatmap_cells  = compute_heatmap_cells(time_df)
     feature_scores = compute_feature_scores(time_preds, selected_game)
 
-    # viewers model (guarded + CACHED)
-    if len(pipelines) > 2:
-        time_preds_viewers = cached_infer_grid(2, selected_stream, selected_game, tag_key, today)
-        time_df_viewers = (
-            time_preds_viewers.groupby('start_time_hour')
-                              .agg(avg_subs=('y_pred','max'), confidence=('conf','mean'))
-                              .reset_index()
-                              .rename(columns={'start_time_hour':'time'})
-                              .round(2)
-        )
-        heatmap_cells_viewers  = compute_heatmap_cells(time_df_viewers)
-        feature_scores_viewers = compute_feature_scores(time_preds_viewers, selected_game)
-    else:
-        heatmap_cells_viewers, feature_scores_viewers = [], []
 
-    # insights (cached)
-    game_insights = compute_game_insights(df_pred, selected_stream)
-    tag_insights  = cached_tag_insights(model_idx, selected_stream, today)
+    time_preds_viewers = _infer_grid_for_game(
+        pipelines[2], df_inf, features,
+        stream_name=selected_stream,
+        override_tags=selected_tags if selected_tags else None,
+        start_times=list(range(24)),
+        durations=dur_opts,
+        category_options=[selected_game],
+        top_n=1000,
+        unique_scores=False,
+        vary_tags=False,
+    ) if ready else pd.DataFrame()
 
-    # SHAP (cached)
-    shap_plots = cached_shap_blocks(model_idx)
+    # print('\nTime Heat Predictions:')
+    # print(time_preds[['start_time_hour','stream_duration','y_pred','tags']])
 
-    # render
+    time_df_viewers = (
+        time_preds_viewers.groupby('start_time_hour')
+                  .agg(avg_subs=('y_pred','max'), confidence=('conf','mean'))
+                  .reset_index()
+                  .rename(columns={'start_time_hour':'time'})
+                  .round(2)
+    ) if ready else pd.DataFrame(columns=['time','avg_subs','confidence'])
+    heatmap_cells_viewers  = compute_heatmap_cells(time_df_viewers)
+    feature_scores_viewers = compute_feature_scores(time_preds_viewers, selected_game)
+  #   time_preds = predict_time_grid(
+  #     baseline_row      = baseline,
+  #     game_category  = selected_game,      # or multiple games
+  #     start_times       = list(range(24)),
+  #     duration         = 4,                  # or any list of ints
+  #     selected_tags     = selected_tags,
+  #     tag_opts          = tag_opts,
+  #     pipeline          = pipe,
+  #     features          = features,
+  # )
+
+  #   # Existing aggregation → heat-map cells
+  #   time_df = (
+  #       time_preds.groupby("start_time_hour")
+  #                 .agg(avg_subs=("y_pred", "max"),
+  #                     confidence=("conf", "mean"))
+  #                 .reset_index()
+  #                 .rename(columns={"start_time_hour": "time"})
+  #                 .round(2)
+  #   )
+
+  #   heatmap_cells  = compute_heatmap_cells(time_df)
+  #   feature_scores = compute_feature_scores(time_preds, selected_game)
+
+    # 10) SHAP
+    shap_plots = get_shap_blocks(pipe, df_pred, features) if ready else {'summary':'{}','dependence':'{}'}
+    # shap_plots = []
+
+    # 11) render
     return render_template_string(
         TEMPLATE_V2,
         today_name=today,
@@ -887,7 +965,7 @@ def show_feature_insights():
         selected_game=selected_game,
         selected_start_time=selected_start_time,
         selected_tags=selected_tags,
-        pred_result=None,
+        pred_result=pred_result,
         game_insights=game_insights,
         tag_insights=tag_insights,
         heatmap_cells=heatmap_cells,
@@ -898,4 +976,3 @@ def show_feature_insights():
         shap_plots=shap_plots,
         legend_tag_opts=legend_tags,
     )
-
