@@ -13,8 +13,8 @@ import pandas as pd
 from typing import Optional, List
 # import matplotlib.pyplot as plt
 
-ROLL_WINDOWS = [1, 3, 7, 14]
-# ROLL_WINDOWS = [1,7]
+# ROLL_WINDOWS = [1, 3, 7, 14]
+ROLL_WINDOWS = [1,7]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURE ENGINEERING
@@ -85,31 +85,31 @@ def _add_historical_rollups(df: pd.DataFrame, extra_cols: Optional[list[str]] = 
     def roll_min(col, n):   return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).min())
     def roll_max(col, n):   return grouped[col].apply(lambda x: x.shift(1).rolling(n, min_periods=1).max())
 
-    base_cols = [
-        'total_subscriptions',
-        'net_follower_change',
-        'unique_viewers',
-        'peak_concurrent_viewers',
-        'stream_duration',
-        'total_num_chats',
-        'total_emotes_used',
-        'bits_donated',
-        'raids_received',
-        'avg_sentiment_score', 
-        'min_sentiment_score', 
-        'max_sentiment_score',
-        'category_changes',
-        'start_time_hour'
-    ]
     # base_cols = [
+    #     'total_subscriptions',
+    #     'net_follower_change',
+    #     'unique_viewers',
+    #     'peak_concurrent_viewers',
     #     'stream_duration',
-    #     'avg_sentiment_score',  
-    #     # 'max_sentiment_score',
+    #     'total_num_chats',
+    #     'total_emotes_used',
+    #     'bits_donated',
+    #     'raids_received',
+    #     'avg_sentiment_score', 
+    #     'min_sentiment_score', 
+    #     'max_sentiment_score',
     #     'category_changes',
-    #     # 'start_time_hour',
-    #     'start_hour_sin', 'start_hour_cos'
-    #     # 'net_follower_change',
+    #     'start_time_hour'
     # ]
+    base_cols = [
+        'stream_duration',
+        'avg_sentiment_score',  
+        # 'max_sentiment_score',
+        'category_changes',
+        # 'start_time_hour',
+        'start_hour_sin', 'start_hour_cos'
+        # 'net_follower_change',
+    ]
     cols = base_cols + (extra_cols or [])
 
     hist_cols = []
@@ -127,8 +127,8 @@ def _add_historical_rollups(df: pd.DataFrame, extra_cols: Optional[list[str]] = 
             df[min_col]  = roll_min(col, n).fillna(0)
             df[max_col]  = roll_max(col, n).fillna(0)
 
-            hist_cols.extend([mean_col, median_col, std_col, min_col, max_col])
-            # hist_cols.extend([mean_col])
+            # hist_cols.extend([mean_col, median_col, std_col, min_col, max_col])
+            hist_cols.extend([mean_col])
 
     # forward-fill and ensure the very first value is zero
     for c in hist_cols:
