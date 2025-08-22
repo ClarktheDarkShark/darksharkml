@@ -451,7 +451,7 @@ def _infer_grid_for_game(
     X_inf = base_rep[features]
 
     print()
-    print(f'X_inf: {X_inf}')
+    print(f'X_inf: {X_inf['start_hour_sin']}')
     
     preds  = pipeline.predict(X_inf)
 
