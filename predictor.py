@@ -434,17 +434,23 @@ def _infer_grid_for_game(
     
     if start_times is None:
         start_times = _predictor_state["optional_start_times"]
+    sin_times = np.sin(2 * np.pi * start_times / 24)
+    cos_times = np.cos(2 * np.pi * start_times / 24)
     
     if durations is None:
         durations = DEFAULT_DURATIONS_HRS
 
     import itertools
-    combos = list(itertools.product(category_options, start_times, durations))
-    grid = pd.DataFrame(combos, columns=["game_category","start_time_hour","stream_duration"])
+    # combos = list(itertools.product(category_options, start_times, durations))
+    combos = list(itertools.product(category_options, sin_times, cos_times, durations))
+    # grid = pd.DataFrame(combos, columns=["game_category","start_time_hour","stream_duration"])
+    grid = pd.DataFrame(combos, columns=["game_category","sin_times", "cos_times","stream_duration"])
 
     # repeat base row for each combo, then overwrite the 3 dynamic columns
     base_rep = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
-    for col in ["game_category","start_time_hour","stream_duration"]:
+    # for col in ["game_category","start_time_hour","stream_duration"]:
+    #     base_rep[col] = grid[col]
+    for col in ["game_category","sin_times","cos_times","stream_duration"]:
         base_rep[col] = grid[col]
 
     # predict
