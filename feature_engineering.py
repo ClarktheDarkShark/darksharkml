@@ -106,8 +106,8 @@ def _add_historical_rollups(df: pd.DataFrame, extra_cols: Optional[list[str]] = 
         'avg_sentiment_score',  
         # 'max_sentiment_score',
         'category_changes',
-        # 'start_time_hour',
-        'start_hour_sin', 'start_hour_cos'
+        'start_time_hour',
+        # 'start_hour_sin', 'start_hour_cos'
         # 'net_follower_change',
     ]
     cols = base_cols + (extra_cols or [])
@@ -188,8 +188,8 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
     
     base_feats = [
         'day_of_week',
-        'start_hour_sin', 'start_hour_cos',
-        # 'start_time_hour',
+        # 'start_hour_sin', 'start_hour_cos',
+        'start_time_hour',
         'is_weekend',
         'days_since_previous_stream',
         'game_category',
