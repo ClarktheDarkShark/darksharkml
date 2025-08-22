@@ -138,7 +138,7 @@ def _load_daily_stats_df(app):
 def _train_model(df_daily: pd.DataFrame):
     df_clean, feats, hist_cols = _prepare_training_frame(df_daily)
     df_clean = df_clean.dropna()
-    df_clean = drop_outliers(df_clean, cols=['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change'] ,method='iqr', factor=5)
+    df_clean = drop_outliers(df_clean, cols=['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change'] ,method='iqr', factor=1.5)
 
 
     # target_list = ['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change']
@@ -186,21 +186,21 @@ def _train_model(df_daily: pd.DataFrame):
 
         if mod == 'rf':
             params = {
-                'reg__regressor__n_estimators':    [500, 1000, 5000],
+                'reg__regressor__n_estimators':    [500, 1000],
                 'reg__regressor__max_depth':       [5, 10, 15],
                 'reg__regressor__max_features':    ['sqrt', 'log2', 0.8],
                 'reg__regressor__min_samples_split': [5, 10],
-                'reg__regressor__min_samples_leaf':  [2, 5, 10],
+                'reg__regressor__min_samples_leaf':  [5, 10],
                 'reg__regressor__bootstrap':       [True, False]
                 }
         elif mod == 'hgb':
             params = [{
                 'reg__regressor__loss': ['squared_error', 'absolute_error'],  # with TTR
-                'reg__regressor__learning_rate':  [0.03, 0.05, 0.1, 0.2],
-                'reg__regressor__max_leaf_nodes': [15, 31, 63, 127],
+                'reg__regressor__learning_rate':  [0.03, 0.05, 0.1],
+                'reg__regressor__max_leaf_nodes': [15, 31, 63],
                 'reg__regressor__min_samples_leaf': [20, 50, 100],
-                'reg__regressor__l2_regularization': [0.0, 0.1, 1.0, 5.0],
-                'reg__regressor__max_bins': [64, 128, 255],
+                'reg__regressor__l2_regularization': [0.1, 1.0, 5.0],
+                'reg__regressor__max_bins': [64, 128],
             }]
         elif mod == 'svr':
             # tune the SVM’s C, epsilon and kernel
