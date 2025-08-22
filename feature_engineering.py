@@ -170,15 +170,15 @@ def _prepare_training_frame(df_daily: pd.DataFrame):
     )
 
     # # ---- SCALE-FREE FEATURES ----
-    df, rate_cols = _add_scale_free_features(df)
+    # df, rate_cols = _add_scale_free_features(df)
 
     # # ---- RELATIVE LIFTS on your key metric ----
     # df, lift_cols = _add_relative_lifts(df, metric='subs_per_100_avg_viewers', windows=(3,7,14))
 
     # # ---- ROLLUPS (include rate + lift columns so the model sees momentum) ----
     # df, hist_cols = _add_historical_rollups(df, extra_cols=rate_cols + lift_cols)
-    df, hist_cols = _add_historical_rollups(df, extra_cols=rate_cols)
-    # df, hist_cols = _add_historical_rollups(df)
+    # df, hist_cols = _add_historical_rollups(df, extra_cols=rate_cols)
+    df, hist_cols = _add_historical_rollups(df)
 
     # df = df.dropna(subset=['total_subscriptions', 'net_follower_change'] + hist_cols)
 
