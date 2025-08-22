@@ -119,7 +119,7 @@ def _load_daily_stats_df(app):
         df_daily = pd.read_sql_table(DailyStats.__tablename__, con=db.engine)
     # ensure columns are strings
     df_daily.columns = df_daily.columns.map(str)
-    df_daily = add_time_features(df_daily)
+    # df_daily = add_time_features(df_daily)
 
 
     df_daily['raw_tags'] = df_daily['tags'].apply(lambda x: x if isinstance(x, list) else [])
@@ -449,6 +449,9 @@ def _infer_grid_for_game(
 
     # predict
     X_inf = base_rep[features]
+
+    print()
+    print(f'X_inf: {X_inf}')
     
     preds  = pipeline.predict(X_inf)
 
