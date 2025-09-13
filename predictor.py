@@ -127,25 +127,39 @@ def _load_daily_stats_df(app):
     # lowercase your game_category as before
     df_daily['game_category'] = df_daily['game_category'].str.lower()
 
+
     return df_daily
 
+from sklearn.metrics import make_scorer
+def wmae(y_true, y_pred):
+    # up-weight non-zeros; scale by |y| capped to avoid blow-ups
+    y_true = np.asarray(y_true)
+    w = 1.0 + 2.0*(y_true != 0) + 0.25*np.minimum(np.abs(y_true), 10.0)
+    return -mean_absolute_error(y_true, y_pred, sample_weight=w)  # negative for scorer
+
+WMAE_SCORER = make_scorer(lambda yt, yp: -wmae(yt, yp), greater_is_better=False)  # already negative above
 
 
+def winsorize_series(s, lo=1.0, hi=99.0):
+    lo_v, hi_v = np.percentile(s, [lo, hi])
+    return np.clip(s, lo_v, hi_v)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TRAINING (GridSearchCV)
 # ─────────────────────────────────────────────────────────────────────────────
 def _train_model(df_daily: pd.DataFrame):
-    df_clean, feats, hist_cols = _prepare_training_frame(df_daily)
-    df_clean = df_clean.dropna()
-    df_clean = drop_outliers(df_clean, cols=['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change'] ,method='iqr', factor=1.5)
+    # df_clean, feats, hist_cols = _prepare_training_frame(df_daily)
 
-
-    # target_list = ['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change']
-
-    target_list = ['total_subscriptions', 'net_follower_change', 'avg_concurrent_viewers']
+    target_list = ['total_subscriptions', 'avg_concurrent_viewers', 'net_follower_change']
+    # target_list = ['net_follower_change']
     pipe_list = []
     for t in target_list:
+        df_clean, feats, hist_cols = _prepare_training_frame(df_daily)
+        if t == 'total_subscriptions':
+            df_clean = drop_outliers(df_clean, cols=['total_subscriptions', 'avg_concurrent_viewers'] ,method='iqr', factor=2.5)
+        if t == 'net_follower_change':
+            df_clean['net_follower_change'] = winsorize_series(df_clean['net_follower_change'], lo=1, hi=99)
+
         y = df_clean[t].values.astype(np.float32)
 
         # y = df_clean['net_follower_change']
@@ -155,34 +169,13 @@ def _train_model(df_daily: pd.DataFrame):
         X_train, X_test = X[train_mask], X[~train_mask]
         y_train, y_test = y[train_mask], y[~train_mask]
 
-        # import matplotlib.pyplot as plt
-        # plt.hist(y_train, bins=20, alpha=0.6, label='train')
-        # plt.hist(y_test,  bins=20, alpha=0.6, label='test')
-        # plt.legend(); plt.title("Subscriptions: train vs test")
-        # plt.show()
+        print('\nX_train shape:', X_train.shape)
+        print()
 
-        # plot_features(feats, X_train, y_train, train_mask, df_clean)
-
-
-        pipeline, mod = _build_pipeline(X_train)
-        # if t == "net_follower_change":
-        #     # pipeline.named_steps['reg'] is the TransformedTargetRegressor
-        #     ttr = pipeline.named_steps["reg"]
-        #     raw_reg = ttr.regressor_
-        #     # rebuild exactly the same pipeline but swap in the raw regressor
-        #     pipeline = Pipeline([*pipeline.steps[:-1], ("reg", raw_reg)])
+        pipeline, mod = _build_pipeline(X_train, target_name=t)
         
-        # tscv = TimeSeriesSplit(n_splits=5, gap=0)  # increase gap if leakage via lagged feats
         tscv = TimeSeriesSplit(n_splits=5, gap=0)
-        # from sklearn.model_selection import GroupKFold
 
-        # groups = df_clean.loc[train_mask, 'stream_name'].to_numpy()
-
-        # # pick number of folds safely (must be ≤ number of unique groups)
-        # n_groups = int(pd.Series(groups).nunique())
-        # n_splits = min(5, n_groups) if n_groups >= 2 else 2
-
-        # tscv = GroupKFold(n_splits=n_splits)
 
         if mod == 'rf':
             params = {
@@ -198,7 +191,7 @@ def _train_model(df_daily: pd.DataFrame):
                 'reg__regressor__loss': ['squared_error', 'absolute_error'],  # with TTR
                 'reg__regressor__learning_rate':  [0.03, 0.05, 0.1],
                 'reg__regressor__max_leaf_nodes': [15, 31, 63],
-                'reg__regressor__min_samples_leaf': [20, 50, 100],
+                'reg__regressor__min_samples_leaf': [5, 10, 50, 100],
                 'reg__regressor__l2_regularization': [0.1, 1.0, 5.0],
                 'reg__regressor__max_bins': [64, 128],
             }]
@@ -218,17 +211,36 @@ def _train_model(df_daily: pd.DataFrame):
             'MAE': make_scorer(mean_absolute_error, greater_is_better=False),
             'RMSE': 'neg_root_mean_squared_error',
         }
+        if t == 'net_follower_change':
+            scoring['WMAE'] = WMAE_SCORER
+            refit_metric = 'WMAE'
+        else:
+            refit_metric = 'MAE'
+        # refit_metric = 'RMSE' if t == 'net_follower_change' else 'MAE'
         model = GridSearchCV(
             estimator=pipeline,
             param_grid=params,
             cv=tscv,
             scoring=scoring,
-            refit='MAE',        # pick the metric you care about; MAE more stable
+            refit=refit_metric,
             n_jobs=-1,
             verbose=1,
             error_score='raise',  # fail fast if something breaks
         )
-        model.fit(X_train, y_train)
+
+        if t == 'net_follower_change':
+            print("\n[Model2] y_train diagnostics:",
+                f"mean={np.mean(y_train):.3f}",
+                f"median={np.median(y_train):.3f}",
+                f"min={np.min(y_train):.3f}",
+                f"max={np.max(y_train):.3f}",
+                f"zero_rate={np.mean(np.asarray(y_train)==0):.3f}")
+            
+        if t == 'net_follower_change':
+            w_train = 1.0 + 4.0*(y_train != 0) + 0.25*np.minimum(np.abs(y_train), 50.0)
+            model.fit(X_train, y_train, **{'reg__sample_weight': w_train})
+        else:
+            model.fit(X_train, y_train)
         # model.fit(X_train, y_train, groups=groups)
 
         
@@ -266,6 +278,21 @@ def _train_model(df_daily: pd.DataFrame):
         df_for_inf = df_clean[['stream_name'] + feats].copy()
 
         pipe_list.append((model.best_estimator_, metrics))
+
+        if t == 'net_follower_change':
+            pred_tr = model.best_estimator_.predict(X_train)
+            pred_te = model.best_estimator_.predict(X_test)
+
+            def _stats(tag, y, p):
+                y = np.asarray(y); p = np.asarray(p)
+                print(f"[Model2] {tag}  y(mean/med)={y.mean():.3f}/{np.median(y):.3f}  "
+                    f"p(mean/med)={p.mean():.3f}/{np.median(p):.3f}  "
+                    f"p[min,max]=[{p.min():.3f},{p.max():.3f}]  "
+                    f"p_zero_rate={(p==0).mean():.3f}")
+
+            _stats("train", y_train, pred_tr)
+            _stats("test ", y_test,  pred_te)
+            print("[Model2] sample y→p:", list(zip(y_test[:10], np.round(pred_te[:10], 3))))
 
 
     return model, pipe_list, df_for_inf, feats

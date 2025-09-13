@@ -87,7 +87,7 @@ def join_raw_tags(x):
 
 
 
-def _build_pipeline(X: pd.DataFrame):
+def _build_pipeline(X: pd.DataFrame, target_name: str = None):
     bool_cols        = X.select_dtypes(include=['bool']).columns.tolist()
     numeric_cols_all = X.select_dtypes(include=[np.number]).columns.tolist()
 
@@ -102,7 +102,7 @@ def _build_pipeline(X: pd.DataFrame):
     # Exclude start_time_hour (and any other column you want to drop)
     numeric_cols = [
         c for c in numeric_cols_all 
-        if c not in bool_cols + ['start_time_hour', 'day_of_week', 'raw_tags']
+        if c not in bool_cols + ['day_of_week', 'raw_tags']
     ]
     
     # # 2) Build a tag‑vectorizing pipeline:
@@ -127,6 +127,7 @@ def _build_pipeline(X: pd.DataFrame):
     preprocessor = ColumnTransformer(transformers=[
         ('num', StandardScaler(), numeric_cols),
         ('tags', tag_pipeline,        ['raw_tags']),
+        ('hour', 'passthrough',       ['start_time_hour']),
         ('bool','passthrough', bool_cols),
         ('dow', OrdinalEncoder(
                     categories=[ordered_days],
@@ -157,14 +158,18 @@ def _build_pipeline(X: pd.DataFrame):
     rf  = TransformedTargetRegressor(rf,
                   transformer=FunctionTransformer(signed_log1p, signed_expm1))
 
+    
     hgb = HistGradientBoostingRegressor(
         early_stopping=False,
         validation_fraction=0.2,
         random_state=42,
         max_iter=200
     )
-    # transformer = FunctionTransformer(signed_log1p, signed_expm1, check_inverse=False)
-    transformer = ShiftedLogTransformer(epsilon=1e-6)
+    if target_name == "net_follower_change":
+        transformer = FunctionTransformer(signed_log1p, signed_expm1, validate=False, check_inverse=False)
+        # transformer = FunctionTransformer(signed_log1p, signed_expm1, check_inverse=False)
+    else:
+        transformer = ShiftedLogTransformer(epsilon=1e-6)
 
     # 3) wrap HGB in TransformedTargetRegressor
     hgb_ttr = TransformedTargetRegressor(regressor=hgb, transformer=transformer)
