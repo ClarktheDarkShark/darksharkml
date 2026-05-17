@@ -18,6 +18,9 @@ daily_recommender = Blueprint("daily_recommender", __name__)
 
 ARTIFACT_PATH = os.path.join(os.path.dirname(__file__), "recommender_artifacts.joblib")
 TZ = pytz.timezone("US/Eastern")
+DEFAULT_START_HOUR = 19
+ALT_TIME_MIN_RELATIVE_GAIN = 0.25
+ALT_TIME_MIN_SCORE_GAIN = 0.35
 
 
 @lru_cache(maxsize=1)
@@ -137,26 +140,10 @@ def _score_grid(artifact: dict, stream_name: str, target_date: datetime) -> pd.D
     return grid
 
 
-def _best_by(grid: pd.DataFrame, group_col: str, metric: str, n: int = 10) -> list[dict]:
-    idx = grid.groupby(group_col)[metric].idxmax()
-    cols = list(
-        dict.fromkeys(
-            [
-                group_col,
-                "game_category",
-                "start_time_hour",
-                "stream_duration",
-                "expected_subs",
-                "expected_followers",
-                "growth_score",
-                "opportunity_index",
-                "confidence",
-                "category_source",
-                "category_rows",
-            ]
-        )
-    )
-    rows = grid.loc[idx, cols].sort_values(metric, ascending=False).head(n).copy()
+def _format_rows(rows: pd.DataFrame) -> list[dict]:
+    if rows.empty:
+        return []
+    rows = rows.copy()
     rows["start_time"] = rows["start_time_hour"].astype(int).map(lambda h: f"{h:02d}:00")
     rows["duration_hours"] = (rows["stream_duration"].astype(float) / 60.0).round(1)
     rows["expected_subs"] = rows["expected_subs"].round(2)
@@ -164,55 +151,66 @@ def _best_by(grid: pd.DataFrame, group_col: str, metric: str, n: int = 10) -> li
     rows["growth_score"] = rows["growth_score"].round(2)
     rows["opportunity_index"] = rows["opportunity_index"].round(0).astype(int)
     rows["confidence"] = rows["confidence"].round(2)
+    rows["signal"] = rows.apply(lambda row: f"{row['category_source']} · {int(row['category_rows'])}", axis=1)
+    if "score_gain" in rows.columns:
+        rows["score_gain"] = rows["score_gain"].round(2)
+        rows["score_gain_pct"] = (100.0 * rows["score_gain_pct"]).round(0).astype(int)
+        rows["sub_gain"] = rows["sub_gain"].round(2)
+        rows["default_score"] = rows["default_score"].round(2)
     return rows.to_dict("records")
 
 
-def _top_rows(grid: pd.DataFrame, metric: str, n: int) -> list[dict]:
-    rows = grid.sort_values(metric, ascending=False).drop_duplicates("game_category").head(n).copy()
-    rows["start_time"] = rows["start_time_hour"].astype(int).map(lambda h: f"{h:02d}:00")
-    rows["duration_hours"] = (rows["stream_duration"].astype(float) / 60.0).round(1)
-    rows["expected_subs"] = rows["expected_subs"].round(2)
-    rows["expected_followers"] = rows["expected_followers"].round(2)
-    rows["growth_score"] = rows["growth_score"].round(2)
-    rows["opportunity_index"] = rows["opportunity_index"].round(0).astype(int)
-    rows["confidence"] = rows["confidence"].round(2)
-    return rows[
-        [
-            "game_category",
-            "start_time",
-            "duration_hours",
-            "expected_subs",
-            "expected_followers",
-            "growth_score",
-            "opportunity_index",
-            "confidence",
-            "category_source",
-            "category_rows",
-        ]
-    ].to_dict("records")
+def _default_time_rows(grid: pd.DataFrame) -> pd.DataFrame:
+    default_rows = grid[grid["start_time_hour"].astype(int) == DEFAULT_START_HOUR]
+    return default_rows if not default_rows.empty else grid
 
 
-def _tag_effects(artifact: dict, stream_name: str, target_date: datetime, top_row: pd.Series, n: int = 10) -> list[dict]:
-    tags = artifact.get("tag_options") or []
-    if not tags:
+def _top_default_plan(grid: pd.DataFrame, n: int) -> list[dict]:
+    rows = (
+        _default_time_rows(grid)
+        .sort_values("growth_score", ascending=False)
+        .drop_duplicates("game_category")
+        .head(n)
+    )
+    return _format_rows(rows)
+
+
+def _expansion_picks(grid: pd.DataFrame, n: int = 3) -> list[dict]:
+    default_rows = _default_time_rows(grid)
+    rows = (
+        default_rows[default_rows["category_source"].eq("curated")]
+        .sort_values("growth_score", ascending=False)
+        .drop_duplicates("game_category")
+        .head(n)
+    )
+    return _format_rows(rows)
+
+
+def _strong_time_tests(grid: pd.DataFrame, n: int = 5) -> list[dict]:
+    records = []
+    for _, group in grid.groupby("game_category"):
+        default_rows = group[group["start_time_hour"].astype(int) == DEFAULT_START_HOUR]
+        alternate_rows = group[group["start_time_hour"].astype(int) != DEFAULT_START_HOUR]
+        if default_rows.empty or alternate_rows.empty:
+            continue
+
+        default_row = default_rows.sort_values("growth_score", ascending=False).iloc[0]
+        alternate_row = alternate_rows.sort_values("growth_score", ascending=False).iloc[0].copy()
+        score_gain = float(alternate_row["growth_score"] - default_row["growth_score"])
+        score_gain_pct = score_gain / max(float(default_row["growth_score"]), 0.01)
+        if score_gain < ALT_TIME_MIN_SCORE_GAIN or score_gain_pct < ALT_TIME_MIN_RELATIVE_GAIN:
+            continue
+
+        alternate_row["default_score"] = float(default_row["growth_score"])
+        alternate_row["score_gain"] = score_gain
+        alternate_row["score_gain_pct"] = score_gain_pct
+        alternate_row["sub_gain"] = float(alternate_row["expected_subs"] - default_row["expected_subs"])
+        records.append(alternate_row)
+
+    if not records:
         return []
-
-    base = _base_row(artifact, stream_name, target_date)
-    for col in ["game_category", "start_time_hour", "stream_duration"]:
-        base[col] = top_row[col]
-
-    current_tags = set(normalize_tags(base.at[base.index[0], "raw_tags"]))
-    baseline_subs = float(np.maximum(_predict(artifact["models"]["total_subscriptions"], base)[0], 0.0))
-    rows = []
-    for tag in tags:
-        mod = base.copy()
-        mod_tags = set(current_tags)
-        mod_tags.add(tag)
-        mod.at[mod.index[0], "raw_tags"] = sorted(mod_tags)
-        mod.at[mod.index[0], "raw_tags_text"] = tags_to_text(sorted(mod_tags))
-        subs = float(np.maximum(_predict(artifact["models"]["total_subscriptions"], mod)[0], 0.0))
-        rows.append({"tag": tag, "expected_subs": round(subs, 2), "delta_subs": round(subs - baseline_subs, 2)})
-    return sorted(rows, key=lambda r: r["delta_subs"], reverse=True)[:n]
+    rows = pd.DataFrame(records).sort_values(["score_gain", "growth_score"], ascending=False).head(n)
+    return _format_rows(rows)
 
 
 TEMPLATE = """
@@ -226,29 +224,35 @@ TEMPLATE = """
     :root { --bg:#101214; --panel:#181c20; --line:#2b3238; --text:#e9eef2; --muted:#9aa7b2; --accent:#4aa3ff; --good:#6fd18b; --warn:#f2b84b; }
     * { box-sizing:border-box; }
     body { margin:0; background:var(--bg); color:var(--text); font-family:Arial, Helvetica, sans-serif; }
-    main { max-width:1180px; margin:0 auto; padding:24px; }
+    main { max-width:980px; margin:0 auto; padding:24px; }
     h1 { font-size:28px; margin:0 0 8px; letter-spacing:0; }
-    h2 { font-size:18px; margin:28px 0 10px; letter-spacing:0; }
-    .meta { color:var(--muted); margin-bottom:18px; }
-    form { display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin:16px 0 22px; }
+    h2 { font-size:17px; margin:22px 0 10px; letter-spacing:0; }
+    .meta { color:var(--muted); margin-bottom:16px; }
+    form { display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin:14px 0 18px; }
     label { display:flex; flex-direction:column; gap:6px; color:var(--muted); font-size:13px; }
     input, button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:9px 11px; font-size:14px; }
     button { background:var(--accent); border-color:var(--accent); color:#06111d; font-weight:700; cursor:pointer; }
-    .notice { border:1px solid var(--line); border-left:4px solid var(--warn); background:var(--panel); padding:12px 14px; border-radius:6px; color:var(--muted); margin:16px 0; }
-    .grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:18px; }
+    .notice, .empty { border:1px solid var(--line); background:var(--panel); padding:12px 14px; border-radius:6px; color:var(--muted); margin:14px 0; }
+    .summary { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; margin:16px 0 6px; }
+    .metric { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:14px; min-height:104px; }
+    .metric span { display:block; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:0; margin-bottom:8px; }
+    .metric strong { display:block; font-size:20px; line-height:1.2; margin-bottom:8px; }
+    .metric small { color:var(--muted); line-height:1.35; }
+    .table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:6px; }
     table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden; }
-    th, td { padding:9px 10px; border-bottom:1px solid var(--line); text-align:left; font-size:14px; }
+    .table-wrap table { border:0; border-radius:0; }
+    th, td { padding:10px 11px; border-bottom:1px solid var(--line); text-align:left; font-size:14px; white-space:nowrap; }
     th { color:var(--muted); font-weight:700; background:#15191d; }
     tr:last-child td { border-bottom:0; }
     .num { text-align:right; font-variant-numeric:tabular-nums; }
     .pill { display:inline-block; color:#06140b; background:var(--good); border-radius:999px; padding:2px 7px; font-size:12px; font-weight:700; }
-    @media (max-width: 820px) { main { padding:16px; } .grid { grid-template-columns:1fr; } table { font-size:13px; } }
+    @media (max-width: 820px) { main { padding:16px; } .summary { grid-template-columns:1fr; } th, td { font-size:13px; } }
   </style>
 </head>
 <body>
 <main>
   <h1>Daily Stream Recommender</h1>
-  <div class="meta">{{ stream }} · {{ date_label }} · artifact {{ created_at }}</div>
+  <div class="meta">{{ stream }} &middot; {{ date_label }} &middot; default start {{ default_start }} &middot; artifact {{ created_at }}</div>
 
   <form method="get" action="/recommend">
     <label>Stream
@@ -265,70 +269,85 @@ TEMPLATE = """
 
   {% if message %}<div class="notice">{{ message }}</div>{% endif %}
 
-  <h2>Top Growth Recommendations <span class="pill">fighting pool</span></h2>
-  <table>
-    <thead><tr><th>Game / Category</th><th>Start</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Follower Upside</th><th class="num">Score</th><th class="num">Index</th><th>Signal</th></tr></thead>
-    <tbody>
-    {% for row in top_growth %}
-      <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.expected_followers }}</td><td class="num">{{ row.growth_score }}</td><td class="num">{{ row.opportunity_index }}</td><td>{{ row.category_source }} · {{ row.category_rows }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  {% if top_plan %}
+    <div class="summary">
+      <div class="metric">
+        <span>Best {{ default_start }} Play</span>
+        <strong>{{ top_plan[0].game_category }}</strong>
+        <small>{{ top_plan[0].duration_hours }}h &middot; {{ top_plan[0].expected_subs }} sub upside &middot; {{ top_plan[0].signal }}</small>
+      </div>
+      <div class="metric">
+        <span>Start Time</span>
+        {% if time_tests %}
+          <strong>{{ time_tests[0].start_time }}</strong>
+          <small>{{ time_tests[0].game_category }} gains {{ time_tests[0].score_gain_pct }}% vs {{ default_start }}</small>
+        {% else %}
+          <strong>{{ default_start }}</strong>
+          <small>No alternate start cleared the test threshold.</small>
+        {% endif %}
+      </div>
+      <div class="metric">
+        <span>Best New Option</span>
+        {% if expansion_picks %}
+          <strong>{{ expansion_picks[0].game_category }}</strong>
+          <small>{{ expansion_picks[0].duration_hours }}h &middot; low evidence &middot; score {{ expansion_picks[0].growth_score }}</small>
+        {% else %}
+          <strong>None</strong>
+          <small>No curated expansion category is available.</small>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
 
-  <h2>Top Recommendations By Subscriptions <span class="pill">promoted</span></h2>
-  <table>
-    <thead><tr><th>Game / Category</th><th>Start</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Follower Upside</th><th class="num">Score</th><th class="num">Index</th><th>Signal</th></tr></thead>
-    <tbody>
-    {% for row in top_subs %}
-      <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.expected_followers }}</td><td class="num">{{ row.growth_score }}</td><td class="num">{{ row.opportunity_index }}</td><td>{{ row.category_source }} · {{ row.category_rows }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <section>
+    <h2>Recommended {{ default_start }} Plan <span class="pill">default</span></h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Game / Category</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Follower Upside</th><th class="num">Score</th><th>Signal</th></tr></thead>
+        <tbody>
+        {% for row in top_plan %}
+          <tr><td>{{ row.game_category }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.expected_followers }}</td><td class="num">{{ row.growth_score }}</td><td>{{ row.signal }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 
-  <h2>Top Recommendations By Followers <span class="meta">experimental</span></h2>
-  <table>
-    <thead><tr><th>Game / Category</th><th>Start</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Follower Upside</th><th class="num">Score</th><th>Signal</th></tr></thead>
-    <tbody>
-    {% for row in top_followers %}
-      <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.expected_followers }}</td><td class="num">{{ row.growth_score }}</td><td>{{ row.category_source }} · {{ row.category_rows }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <section>
+    <h2>Strong Start-Time Tests <span class="meta">vs {{ default_start }}</span></h2>
+    {% if time_tests %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Game / Category</th><th>Test Start</th><th>Hours</th><th class="num">Score</th><th class="num">Gain</th><th class="num">Sub Gain</th><th>Signal</th></tr></thead>
+          <tbody>
+          {% for row in time_tests %}
+            <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.growth_score }}</td><td class="num">+{{ row.score_gain }} / {{ row.score_gain_pct }}%</td><td class="num">+{{ row.sub_gain }}</td><td>{{ row.signal }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">No alternate start cleared the gain threshold.</div>
+    {% endif %}
+  </section>
 
-  <div class="grid">
-    <section>
-      <h2>Best Categories For Subs</h2>
-      <table><thead><tr><th>Category</th><th>Start</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Index</th></tr></thead><tbody>
-      {% for row in category_subs %}
-        <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.opportunity_index }}</td></tr>
-      {% endfor %}
-      </tbody></table>
-    </section>
-    <section>
-      <h2>Best Start Times For Subs</h2>
-      <table><thead><tr><th>Start</th><th>Category</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Index</th></tr></thead><tbody>
-      {% for row in hour_subs %}
-        <tr><td>{{ row.start_time }}</td><td>{{ row.game_category }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.opportunity_index }}</td></tr>
-      {% endfor %}
-      </tbody></table>
-    </section>
-    <section>
-      <h2>Best Durations For Subs</h2>
-      <table><thead><tr><th>Hours</th><th>Category</th><th>Start</th><th class="num">Sub Upside</th><th class="num">Index</th></tr></thead><tbody>
-      {% for row in duration_subs %}
-        <tr><td>{{ row.duration_hours }}</td><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.opportunity_index }}</td></tr>
-      {% endfor %}
-      </tbody></table>
-    </section>
-    <section>
-      <h2>Tag Effects For Top Sub Row</h2>
-      <table><thead><tr><th>Tag</th><th class="num">Subs</th><th class="num">Delta</th></tr></thead><tbody>
-      {% for row in tag_effects %}
-        <tr><td>{{ row.tag }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.delta_subs }}</td></tr>
-      {% endfor %}
-      </tbody></table>
-    </section>
-  </div>
+  <section>
+    <h2>Expansion Picks <span class="meta">low evidence</span></h2>
+    {% if expansion_picks %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Game / Category</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Score</th><th>Signal</th></tr></thead>
+          <tbody>
+          {% for row in expansion_picks %}
+            <tr><td>{{ row.game_category }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.growth_score }}</td><td>{{ row.signal }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">No low-evidence expansion picks are available.</div>
+    {% endif %}
+  </section>
 </main>
 </body>
 </html>
@@ -345,15 +364,12 @@ def recommend_today():
             date_label=datetime.now(TZ).strftime("%A, %B %d, %Y"),
             date_value=datetime.now(TZ).strftime("%Y-%m-%d"),
             created_at="missing",
+            default_start=f"{DEFAULT_START_HOUR:02d}:00",
             top_n=10,
             message="recommender_artifacts.joblib is missing. Run python train_recommender.py first.",
-            top_growth=[],
-            top_subs=[],
-            top_followers=[],
-            category_subs=[],
-            hour_subs=[],
-            duration_subs=[],
-            tag_effects=[],
+            top_plan=[],
+            time_tests=[],
+            expansion_picks=[],
         )
 
     stream = (request.args.get("stream") or artifact.get("target_stream") or TARGET_STREAM).strip()
@@ -363,15 +379,10 @@ def recommend_today():
     except ValueError:
         top_n = 10
 
-    notes = artifact.get("notes", {})
-    message = " ".join(
-        note
-        for note in [
-            notes.get("subscription_model", ""),
-            notes.get("candidate_pool", ""),
-            notes.get("follower_model", ""),
-        ]
-        if note
+    message = (
+        "Fighting-game pool only. "
+        f"{DEFAULT_START_HOUR:02d}:00 is the default start; alternate times require at least "
+        f"{int(ALT_TIME_MIN_RELATIVE_GAIN * 100)}% and {ALT_TIME_MIN_SCORE_GAIN:.2f} score gain."
     )
     try:
         grid = _score_grid(artifact, stream, target_date)
@@ -380,20 +391,11 @@ def recommend_today():
         grid = pd.DataFrame()
 
     if grid.empty:
-        top_growth = top_subs = top_followers = category_subs = hour_subs = duration_subs = tag_effects = []
+        top_plan = time_tests = expansion_picks = []
     else:
-        top_growth = _top_rows(grid, "growth_score", top_n)
-        top_subs = _top_rows(grid, "expected_subs", top_n)
-        top_followers = _top_rows(grid, "expected_followers", top_n)
-        category_subs = _best_by(grid, "game_category", "expected_subs", top_n)
-        hour_subs = _best_by(grid, "start_time_hour", "expected_subs", top_n)
-        duration_subs = _best_by(grid, "stream_duration", "expected_subs", top_n)
-        tag_effects = _tag_effects(
-            artifact,
-            stream,
-            target_date,
-            grid.sort_values("expected_subs", ascending=False).iloc[0],
-        )
+        top_plan = _top_default_plan(grid, top_n)
+        time_tests = _strong_time_tests(grid, min(top_n, 5))
+        expansion_picks = _expansion_picks(grid, min(top_n, 5))
 
     return render_template_string(
         TEMPLATE,
@@ -401,13 +403,10 @@ def recommend_today():
         date_label=target_date.strftime("%A, %B %d, %Y"),
         date_value=target_date.strftime("%Y-%m-%d"),
         created_at=str(artifact.get("created_at_utc", ""))[:19],
+        default_start=f"{DEFAULT_START_HOUR:02d}:00",
         top_n=top_n,
         message=message,
-        top_growth=top_growth,
-        top_subs=top_subs,
-        top_followers=top_followers,
-        category_subs=category_subs,
-        hour_subs=hour_subs,
-        duration_subs=duration_subs,
-        tag_effects=tag_effects,
+        top_plan=top_plan,
+        time_tests=time_tests,
+        expansion_picks=expansion_picks,
     )
