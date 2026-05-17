@@ -22,7 +22,7 @@ from sklearn.preprocessing import FunctionTransformer, OrdinalEncoder
 
 TARGET_STREAM = "thelegendyagami"
 DEFAULT_START_TIMES = list(range(24))
-DEFAULT_DURATIONS = [120, 180, 240, 300, 360, 420]
+DEFAULT_DURATIONS = [180, 210, 240]
 DEFAULT_MAX_PEER_CCV = 1000.0
 BLOCKED_CATEGORIES = {
     "just chatting",
@@ -52,6 +52,34 @@ FIGHTING_CATEGORY_CANDIDATES = [
     "rivals of aether ii",
     "brawlhalla",
     "virtua fighter 5 r.e.v.o.",
+]
+CURATED_CATEGORY_CANDIDATES = FIGHTING_CATEGORY_CANDIDATES + [
+    "dark souls ii: scholar of the first sin",
+    "dark souls: remastered",
+    "dark souls iii",
+    "elden ring",
+    "hades",
+    "hades ii",
+    "slay the spire ii",
+    "animal well",
+    "blue prince",
+    "ball x pit",
+    "nine sols",
+    "ufo 50",
+    "the legend of zelda",
+    "the legend of zelda: a link to the past",
+    "the legend of zelda: ocarina of time",
+    "the legend of zelda: majora's mask",
+    "the legend of zelda: the wind waker",
+    "the legend of zelda: twilight princess",
+    "resident evil 4",
+    "resident evil 7 biohazard",
+    "resident evil village",
+    "resident evil: requiem",
+    "mega man 11",
+    "mega man zero",
+    "mega man zero 2",
+    "mega man zero 3",
 ]
 FIGHTING_KEYWORDS = (
     "2xko",
@@ -287,6 +315,68 @@ def _smoothed_rate(mean_value: float, n: int, prior: float, weight: int = 12) ->
     return float((n * mean_value + weight * prior) / max(n + weight, 1))
 
 
+def _build_candidate_categories(metrics: pd.DataFrame, target_stream: str) -> list[str]:
+    stream_lc = target_stream.lower()
+    category_summary = metrics.groupby("game_category").agg(
+        rows=("game_category", "size"),
+        streamers=("stream_name_lc", "nunique"),
+        target_rows=("stream_name_lc", lambda values: int((values == stream_lc).sum())),
+        med_ccv=("avg_concurrent_viewers", "median"),
+    )
+
+    candidates = set(CURATED_CATEGORY_CANDIDATES)
+    for category, row in category_summary.iterrows():
+        if category in BLOCKED_CATEGORIES:
+            continue
+        has_target_history = int(row["target_rows"]) > 0
+        has_peer_signal = int(row["rows"]) >= 5 and int(row["streamers"]) >= 2 and float(row["med_ccv"]) <= 1000
+        if has_target_history or has_peer_signal:
+            candidates.add(str(category))
+
+    return sorted(category for category in candidates if category and category not in BLOCKED_CATEGORIES)
+
+
+def _build_data_sufficiency(metrics: pd.DataFrame, candidates: list[str], target_stream: str) -> dict:
+    stream_lc = target_stream.lower()
+    target_rows = metrics[metrics["stream_name_lc"] == stream_lc]
+    target_candidates = target_rows[target_rows["game_category"].isin(candidates)]
+    peer_candidates = metrics[
+        metrics["game_category"].isin(candidates) & ~metrics["stream_name_lc"].eq(stream_lc)
+    ]
+    saturday = target_rows[target_rows["day_of_week"].eq("Saturday")]
+    duration_hours = target_rows["stream_duration"].astype(float) / 60.0
+    category_counts = target_candidates["game_category"].value_counts()
+    thin_categories = int((category_counts < 5).sum())
+
+    median_duration = float(duration_hours.median()) if not duration_hours.empty else 0.0
+    p75_duration = float(duration_hours.quantile(0.75)) if not duration_hours.empty else 0.0
+    p90_duration = float(duration_hours.quantile(0.90)) if not duration_hours.empty else 0.0
+    coverage_level = "good"
+    if len(target_rows) < 300 or len(peer_candidates) < 500 or thin_categories > len(category_counts) / 2:
+        coverage_level = "thin"
+    if len(target_rows) < 150 or len(peer_candidates) < 250:
+        coverage_level = "very thin"
+
+    return {
+        "coverage_level": coverage_level,
+        "target_rows": int(len(target_rows)),
+        "candidate_categories": int(len(candidates)),
+        "target_candidate_categories": int(target_candidates["game_category"].nunique()),
+        "thin_target_categories": thin_categories,
+        "peer_candidate_rows": int(len(peer_candidates)),
+        "peer_streamers": int(peer_candidates["stream_name_lc"].nunique()),
+        "saturday_rows": int(len(saturday)),
+        "saturday_fighting_rows": int(saturday["is_fighting_category"].sum()) if not saturday.empty else 0,
+        "median_duration_hours": round(median_duration, 2),
+        "p75_duration_hours": round(p75_duration, 2),
+        "p90_duration_hours": round(p90_duration, 2),
+        "recommendation": (
+            "Collect 300-500 more comparable streams across Yagami-like categories, with at least 30-50 rows "
+            "per test category and fresh Saturday fighting-game peer rows."
+        ),
+    }
+
+
 def _chatters_per_100_viewers(rows: pd.DataFrame) -> float:
     if rows.empty or "total_chatters" not in rows or "avg_concurrent_viewers" not in rows:
         return 0.0
@@ -343,27 +433,27 @@ def _build_category_pulse(
             "latest_date": latest.strftime("%Y-%m-%d"),
             "pulse_score": int(pulse_score),
             "chatters_per_100_viewers": round(_chatters_per_100_viewers(rows), 1),
-            "reason": f"{recent_rows} fighting-pool rows in the last 45 days.",
+            "reason": f"{recent_rows} candidate-pool rows in the last 45 days.",
         }
     return pulse
 
 
-def _build_community_targets(metrics: pd.DataFrame, target_stream: str) -> list[dict]:
+def _build_community_targets(metrics: pd.DataFrame, target_stream: str, candidates: list[str]) -> list[dict]:
     stream_lc = target_stream.lower()
-    fighting = metrics[metrics["is_fighting_category"]].copy()
-    if fighting.empty:
+    relevant = metrics[metrics["game_category"].isin(candidates)].copy()
+    if relevant.empty:
         return []
 
-    max_date = pd.to_datetime(fighting["stream_date"]).max()
+    max_date = pd.to_datetime(relevant["stream_date"]).max()
     recent_cutoff = max_date - pd.Timedelta(days=90)
-    target_rows = fighting[fighting["stream_name_lc"] == stream_lc]
+    target_rows = relevant[relevant["stream_name_lc"] == stream_lc]
     target_categories = set(target_rows["game_category"].dropna().astype(str))
     target_ccv = float(target_rows.tail(30)["avg_concurrent_viewers"].median())
     if not np.isfinite(target_ccv) or target_ccv <= 0:
         target_ccv = 10.0
 
     targets = []
-    for stream_name, rows in fighting[fighting["stream_name_lc"] != stream_lc].groupby("stream_name_lc"):
+    for stream_name, rows in relevant[relevant["stream_name_lc"] != stream_lc].groupby("stream_name_lc"):
         categories = sorted(set(rows["game_category"].dropna().astype(str)))
         overlap = sorted(set(categories).intersection(target_categories))
         med_ccv = float(rows["avg_concurrent_viewers"].median())
@@ -418,8 +508,9 @@ def build_opportunity_stats(df: pd.DataFrame, target_stream: str) -> dict:
     ).astype(int)
     metrics["is_fighting_category"] = metrics["game_category"].map(is_fighting_category)
 
-    fighting = metrics[metrics["is_fighting_category"]].copy()
-    prior_frame = fighting if not fighting.empty else metrics
+    candidates = _build_candidate_categories(metrics, target_stream)
+    candidate_frame = metrics[metrics["game_category"].isin(candidates)].copy()
+    prior_frame = candidate_frame if not candidate_frame.empty else metrics
     global_sub_rate = _clipped_mean(prior_frame["subs_per_100_viewers"], 0.0)
     global_follow_rate = _clipped_mean(prior_frame["followers_per_100_viewers"], 0.0)
     all_sub_rate = _clipped_mean(metrics["subs_per_100_viewers"], global_sub_rate)
@@ -427,22 +518,17 @@ def build_opportunity_stats(df: pd.DataFrame, target_stream: str) -> dict:
     global_sub_rate = global_sub_rate or all_sub_rate or 1.0
     global_follow_rate = global_follow_rate or all_follow_rate or 0.25
 
-    observed_fighting = sorted(
-        c
-        for c in metrics.loc[metrics["is_fighting_category"], "game_category"].dropna().astype(str).unique()
-        if c not in BLOCKED_CATEGORIES
-    )
-    candidates = sorted(set(FIGHTING_CATEGORY_CANDIDATES).union(observed_fighting))
-
     category_stats = {}
+    stream_lc = target_stream.lower()
     for category in candidates:
         rows = metrics[metrics["game_category"] == category]
         n = int(len(rows))
         streamers = int(rows["stream_name_lc"].nunique()) if n else 0
+        target_rows = int((rows["stream_name_lc"] == stream_lc).sum()) if n else 0
         if n:
             sub_mean = _clipped_mean(rows["subs_per_100_viewers"], global_sub_rate)
             follow_mean = _clipped_mean(rows["followers_per_100_viewers"], global_follow_rate)
-            source = "observed"
+            source = "target" if target_rows else "peer"
         else:
             # No observed rows means no evidence. Keep curated games visible as
             # exploration ideas, but do not let them outrank categories with data.
@@ -451,6 +537,8 @@ def build_opportunity_stats(df: pd.DataFrame, target_stream: str) -> dict:
             source = "curated"
 
         confidence = min(1.0, np.log1p(n) / np.log1p(35)) * min(1.0, max(streamers, 1) / 3.0)
+        if target_rows:
+            confidence = min(1.0, confidence + min(0.35, np.log1p(target_rows) / np.log1p(20) * 0.35))
         if source == "curated":
             confidence = 0.05
             smoothed_sub_rate = sub_mean
@@ -462,7 +550,9 @@ def build_opportunity_stats(df: pd.DataFrame, target_stream: str) -> dict:
         category_stats[category] = {
             "rows": n,
             "streamers": streamers,
+            "target_rows": target_rows,
             "source": source,
+            "is_fighting": bool(is_fighting_category(category)),
             "confidence": round(float(confidence), 3),
             "subs_per_100_viewers": round(smoothed_sub_rate, 4),
             "followers_per_100_viewers": round(smoothed_follow_rate, 4),
@@ -494,17 +584,25 @@ def build_opportunity_stats(df: pd.DataFrame, target_stream: str) -> dict:
         "recent_rows": int(len(recent)),
     }
     category_pulse = _build_category_pulse(metrics, candidates, category_stats, global_sub_rate)
-    community_targets = _build_community_targets(metrics, target_stream)
+    saturday_candidates = [category for category in candidates if is_fighting_category(category)]
+    community_targets = _build_community_targets(metrics, target_stream, candidates)
+    saturday_community_targets = _build_community_targets(metrics, target_stream, saturday_candidates)
+    data_sufficiency = _build_data_sufficiency(metrics, candidates, target_stream)
 
     return {
         "candidate_categories": candidates,
+        "saturday_candidate_categories": saturday_candidates,
         "blocked_categories": sorted(BLOCKED_CATEGORIES),
         "category_stats": category_stats,
         "category_pulse": category_pulse,
         "community_targets": community_targets,
+        "saturday_community_targets": saturday_community_targets,
+        "data_sufficiency": data_sufficiency,
         "hour_factors": factor_table("start_time_hour"),
         "duration_factors": factor_table("duration_bucket"),
         "global_rates": {
+            "candidate_subs_per_100_viewers": round(float(global_sub_rate), 4),
+            "candidate_followers_per_100_viewers": round(float(global_follow_rate), 4),
             "fighting_subs_per_100_viewers": round(float(global_sub_rate), 4),
             "fighting_followers_per_100_viewers": round(float(global_follow_rate), 4),
             "all_subs_per_100_viewers": round(float(all_sub_rate), 4),
@@ -513,7 +611,8 @@ def build_opportunity_stats(df: pd.DataFrame, target_stream: str) -> dict:
         "stream_profile": profile,
         "method": (
             "Scores combine the validated Yagami-scale raw-sub model with smoothed category/hour/duration "
-            "opportunity rates learned from the broader streamer sample, then restrict candidates to fighting games."
+            "opportunity rates learned from the broader streamer sample. Saturdays use Fight Night filtering; "
+            "other days use the broader Yagami-compatible category pool."
         ),
     }
 
@@ -578,7 +677,7 @@ def train_recommender_artifact(
         "notes": {
             "subscription_model": "Growth score uses Yagami-scale validation plus broader streamer opportunity rates.",
             "follower_model": "Followers are still experimental; current target-stream validation does not materially beat zero.",
-            "candidate_pool": "Recommendations are restricted to fighting games and exclude non-fighting categories.",
+            "candidate_pool": "Recommendations use Yagami-compatible categories, exclude known off-brand categories, and switch Saturdays into Fight Night mode.",
         },
     }
     joblib.dump(artifact, artifact_path, compress=3)

@@ -71,6 +71,8 @@ def _build_grid(artifact: dict, stream_name: str, target_date: datetime) -> pd.D
     base = _base_row(artifact, stream_name, target_date)
     opportunity = artifact.get("opportunity_stats", {})
     categories = opportunity.get("candidate_categories") or artifact.get("category_options") or []
+    if target_date.strftime("%A") == "Saturday":
+        categories = opportunity.get("saturday_candidate_categories") or categories
     combos = list(itertools.product(categories, artifact["start_times"], artifact["durations"]))
     grid = pd.DataFrame(combos, columns=["game_category", "start_time_hour", "stream_duration"])
     rows = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
@@ -95,8 +97,19 @@ def _score_grid(artifact: dict, stream_name: str, target_date: datetime) -> pd.D
 
     base_subs = max(float(profile.get("recent_subs_per_stream", 1.0)), 0.25)
     base_followers = max(float(profile.get("recent_positive_followers_per_stream", 0.25)), 0.1)
-    global_sub_rate = max(float(global_rates.get("fighting_subs_per_100_viewers", 1.0)), 1e-6)
-    global_follow_rate = max(float(global_rates.get("fighting_followers_per_100_viewers", 0.25)), 1e-6)
+    global_sub_rate = max(
+        float(global_rates.get("candidate_subs_per_100_viewers", global_rates.get("fighting_subs_per_100_viewers", 1.0))),
+        1e-6,
+    )
+    global_follow_rate = max(
+        float(
+            global_rates.get(
+                "candidate_followers_per_100_viewers",
+                global_rates.get("fighting_followers_per_100_viewers", 0.25),
+            )
+        ),
+        1e-6,
+    )
 
     def _cat_value(category, key, fallback):
         return float(category_stats.get(str(category), {}).get(key, fallback))
@@ -106,6 +119,8 @@ def _score_grid(artifact: dict, stream_name: str, target_date: datetime) -> pd.D
         return float(item.get(metric, 1.0))
 
     grid["category_rows"] = grid["game_category"].map(lambda c: int(category_stats.get(str(c), {}).get("rows", 0)))
+    grid["target_rows"] = grid["game_category"].map(lambda c: int(category_stats.get(str(c), {}).get("target_rows", 0)))
+    grid["is_fighting"] = grid["game_category"].map(lambda c: bool(category_stats.get(str(c), {}).get("is_fighting", False)))
     grid["category_source"] = grid["game_category"].map(lambda c: category_stats.get(str(c), {}).get("source", "curated"))
     grid["confidence"] = grid["game_category"].map(lambda c: _cat_value(c, "confidence", 0.12))
     grid["category_sub_rate"] = grid["game_category"].map(
@@ -136,6 +151,17 @@ def _score_grid(artifact: dict, stream_name: str, target_date: datetime) -> pd.D
     grid["expected_subs"] = 0.35 * grid["model_subs"] + 0.65 * grid["opportunity_subs"]
     grid["expected_followers"] = 0.25 * np.maximum(grid["model_followers"], 0.0) + 0.75 * grid["opportunity_followers"]
     grid["opportunity_index"] = 100.0 * relative_sub * grid["hour_sub_factor"] * grid["duration_sub_factor"]
+    grid["fit_weight"] = np.select(
+        [
+            grid["target_rows"].ge(5),
+            grid["target_rows"].gt(0),
+            grid["category_source"].eq("peer"),
+        ],
+        [1.0, 0.9, 0.72],
+        default=0.62,
+    )
+    grid["expected_subs"] *= grid["fit_weight"]
+    grid["expected_followers"] *= grid["fit_weight"]
     grid["growth_score"] = grid["expected_subs"] + 0.6 * grid["expected_followers"] + 0.1 * grid["confidence"]
     return grid
 
@@ -151,7 +177,10 @@ def _format_rows(rows: pd.DataFrame) -> list[dict]:
     rows["growth_score"] = rows["growth_score"].round(2)
     rows["opportunity_index"] = rows["opportunity_index"].round(0).astype(int)
     rows["confidence"] = rows["confidence"].round(2)
-    rows["signal"] = rows.apply(lambda row: f"{row['category_source']} · {int(row['category_rows'])}", axis=1)
+    rows["signal"] = rows.apply(
+        lambda row: f"{row['category_source']} · {int(row['target_rows'])}/{int(row['category_rows'])}",
+        axis=1,
+    )
     if "score_gain" in rows.columns:
         rows["score_gain"] = rows["score_gain"].round(2)
         rows["score_gain_pct"] = (100.0 * rows["score_gain_pct"]).round(0).astype(int)
@@ -178,7 +207,7 @@ def _top_default_plan(grid: pd.DataFrame, n: int) -> list[dict]:
 def _expansion_picks(grid: pd.DataFrame, n: int = 3) -> list[dict]:
     default_rows = _default_time_rows(grid)
     rows = (
-        default_rows[default_rows["category_source"].eq("curated")]
+        default_rows[(default_rows["target_rows"].lt(3)) | (default_rows["category_source"].eq("curated"))]
         .sort_values("growth_score", ascending=False)
         .drop_duplicates("game_category")
         .head(n)
@@ -269,8 +298,14 @@ def _category_pulse_rows(artifact: dict, top_plan: list[dict], n: int = 4) -> li
     return rows
 
 
-def _community_targets(artifact: dict, n: int = 4) -> list[dict]:
-    return (artifact.get("opportunity_stats", {}).get("community_targets") or [])[:n]
+def _community_targets(artifact: dict, is_saturday: bool, n: int = 4) -> list[dict]:
+    opportunity = artifact.get("opportunity_stats", {})
+    key = "saturday_community_targets" if is_saturday else "community_targets"
+    return (opportunity.get(key) or [])[:n]
+
+
+def _data_health(artifact: dict) -> dict:
+    return artifact.get("opportunity_stats", {}).get("data_sufficiency", {})
 
 
 TEMPLATE = """
@@ -318,7 +353,7 @@ TEMPLATE = """
 <body>
 <main>
   <h1>Daily Stream Recommender</h1>
-  <div class="meta">{{ stream }} &middot; {{ date_label }} &middot; default start {{ default_start }} &middot; artifact {{ created_at }}</div>
+  <div class="meta">{{ stream }} &middot; {{ date_label }} &middot; {{ mode_label }} &middot; default start {{ default_start }} &middot; artifact {{ created_at }}</div>
 
   <form method="get" action="/recommend">
     <label>Stream
@@ -353,13 +388,13 @@ TEMPLATE = """
         {% endif %}
       </div>
       <div class="metric">
-        <span>Best New Option</span>
+        <span>Best Category Test</span>
         {% if expansion_picks %}
           <strong>{{ expansion_picks[0].game_category }}</strong>
-          <small>{{ expansion_picks[0].duration_hours }}h &middot; low evidence &middot; score {{ expansion_picks[0].growth_score }}</small>
+          <small>{{ expansion_picks[0].duration_hours }}h &middot; {{ expansion_picks[0].signal }} &middot; score {{ expansion_picks[0].growth_score }}</small>
         {% else %}
           <strong>None</strong>
-          <small>No curated expansion category is available.</small>
+          <small>No under-tested category cleared the ranking pass.</small>
         {% endif %}
       </div>
     </div>
@@ -396,8 +431,37 @@ TEMPLATE = """
             {% endfor %}
             </ul>
           {% else %}
-            <div class="empty">No adjacent fighting-streamer targets yet.</div>
+            <div class="empty">No adjacent streamer targets yet.</div>
           {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Data Health <span class="meta">{{ data_health.coverage_level }}</span></h2>
+      <div class="growth-grid">
+        <div class="growth-card">
+          <h3>Yagami Coverage</h3>
+          <ul>
+            <li><b>{{ data_health.target_rows }}</b> target streams in the training table.</li>
+            <li><b>{{ data_health.target_candidate_categories }}</b> target categories in the candidate pool.</li>
+            <li>Median stream: <b>{{ data_health.median_duration_hours }}h</b>; 75th percentile: <b>{{ data_health.p75_duration_hours }}h</b>.</li>
+          </ul>
+        </div>
+        <div class="growth-card">
+          <h3>Peer Coverage</h3>
+          <ul>
+            <li><b>{{ data_health.peer_candidate_rows }}</b> comparable candidate rows.</li>
+            <li><b>{{ data_health.peer_streamers }}</b> peer streamers represented.</li>
+            <li><b>{{ data_health.thin_target_categories }}</b> target categories have fewer than 5 rows.</li>
+          </ul>
+        </div>
+        <div class="growth-card">
+          <h3>Saturday Mode</h3>
+          <ul>
+            <li><b>{{ data_health.saturday_fighting_rows }}</b> of <b>{{ data_health.saturday_rows }}</b> Saturday streams are fighting games.</li>
+            <li>{{ data_health.recommendation }}</li>
+          </ul>
         </div>
       </div>
     </section>
@@ -436,7 +500,7 @@ TEMPLATE = """
   </section>
 
   <section>
-    <h2>Expansion Picks <span class="meta">low evidence</span></h2>
+    <h2>Category Tests <span class="meta">under-tested</span></h2>
     {% if expansion_picks %}
       <div class="table-wrap">
         <table>
@@ -449,7 +513,7 @@ TEMPLATE = """
         </table>
       </div>
     {% else %}
-      <div class="empty">No low-evidence expansion picks are available.</div>
+      <div class="empty">No under-tested category picks are available.</div>
     {% endif %}
   </section>
 </main>
@@ -468,6 +532,7 @@ def recommend_today():
             date_label=datetime.now(TZ).strftime("%A, %B %d, %Y"),
             date_value=datetime.now(TZ).strftime("%Y-%m-%d"),
             created_at="missing",
+            mode_label="standard mode",
             default_start=f"{DEFAULT_START_HOUR:02d}:00",
             top_n=10,
             message="recommender_artifacts.joblib is missing. Run python train_recommender.py first.",
@@ -477,6 +542,7 @@ def recommend_today():
             live_cues=[],
             category_pulse=[],
             community_targets=[],
+            data_health={},
         )
 
     stream = (request.args.get("stream") or artifact.get("target_stream") or TARGET_STREAM).strip()
@@ -486,10 +552,14 @@ def recommend_today():
     except ValueError:
         top_n = 10
 
+    is_saturday = target_date.strftime("%A") == "Saturday"
+    mode_label = "Saturday Night Fight Night" if is_saturday else "standard category mode"
     message = (
-        "Fighting-game pool only. "
+        f"{mode_label}: "
+        "3-4 hour streams are prioritized. "
         f"{DEFAULT_START_HOUR:02d}:00 is the default start; alternate times require at least "
-        f"{int(ALT_TIME_MIN_RELATIVE_GAIN * 100)}% and {ALT_TIME_MIN_SCORE_GAIN:.2f} score gain."
+        f"{int(ALT_TIME_MIN_RELATIVE_GAIN * 100)}% and {ALT_TIME_MIN_SCORE_GAIN:.2f} score gain. "
+        "Known off-brand categories are excluded."
     )
     try:
         grid = _score_grid(artifact, stream, target_date)
@@ -499,13 +569,15 @@ def recommend_today():
 
     if grid.empty:
         top_plan = time_tests = expansion_picks = live_cues = category_pulse = community_targets = []
+        data_health = {}
     else:
         top_plan = _top_default_plan(grid, top_n)
         time_tests = _strong_time_tests(grid, min(top_n, 5))
         expansion_picks = _expansion_picks(grid, min(top_n, 5))
         live_cues = _live_growth_cues(top_plan)
         category_pulse = _category_pulse_rows(artifact, top_plan, min(top_n, 4))
-        community_targets = _community_targets(artifact, 4)
+        community_targets = _community_targets(artifact, is_saturday, 4)
+        data_health = _data_health(artifact)
 
     return render_template_string(
         TEMPLATE,
@@ -513,6 +585,7 @@ def recommend_today():
         date_label=target_date.strftime("%A, %B %d, %Y"),
         date_value=target_date.strftime("%Y-%m-%d"),
         created_at=str(artifact.get("created_at_utc", ""))[:19],
+        mode_label=mode_label,
         default_start=f"{DEFAULT_START_HOUR:02d}:00",
         top_n=top_n,
         message=message,
@@ -522,4 +595,5 @@ def recommend_today():
         live_cues=live_cues,
         category_pulse=category_pulse,
         community_targets=community_targets,
+        data_health=data_health,
     )
