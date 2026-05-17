@@ -1,7 +1,6 @@
 import os
 from flask import Flask
 from db import db
-import services.recommendation_service
 from extensions import cache
 from dotenv import load_dotenv
 if "DYNO" not in os.environ:     # DYNO is always set on Heroku
@@ -10,7 +9,7 @@ if "DYNO" not in os.environ:     # DYNO is always set on Heroku
 
 from dashboard_predictions import dash_preds
 from dashboard_v2 import dash_v2
-from dashboard_v3 import dash_v3
+from daily_recommender import daily_recommender
 
 
 def create_app():
@@ -33,6 +32,7 @@ def create_app():
     db.init_app(app)
     app.register_blueprint(dash_preds)
     app.register_blueprint(dash_v2)  # Remove prefix; route will be accessible at /v2
+    app.register_blueprint(daily_recommender)
     
     # app.register_blueprint(dash_v3)
 

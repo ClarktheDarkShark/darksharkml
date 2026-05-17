@@ -2,3 +2,10 @@
 
 *.jpg
 *.mp4
+__pycache__/
+*.pyc
+.env
+*.env
+*cookies*.txt
+*cookie*.txt
+experiments/runs/

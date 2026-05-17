@@ -3,20 +3,22 @@ os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2" 
 # from models import DailyStats
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 import pandas as pd
 import numpy as np
 
 
-load_dotenv()  # reads .env in working directory
-db_url = os.getenv("DATABASE_URL")
-db_url = "postgres://u76gs2mfn3l2um:p1577d0e7a90ab74ce0a8dcbd5dab809f4240ab92836929df08e328b6c82c5a13@c2hbg00ac72j9d.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/d35v2smh8r48et"
+def _get_database_url() -> str:
+    load_dotenv()
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise RuntimeError("DATABASE_URL is required to load training data.")
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    return db_url
 
-# Heroku uses postgres:// but SQLAlchemy expects postgresql://
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(db_url)
+engine = create_engine(_get_database_url())
 
 def winsorize_series(s, lo=1.0, hi=99.0):
     lo_v, hi_v = np.percentile(s, [lo, hi])
