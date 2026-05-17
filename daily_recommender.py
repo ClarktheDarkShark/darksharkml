@@ -66,9 +66,8 @@ def _predict(model_info: dict, frame: pd.DataFrame) -> np.ndarray:
 
 def _build_grid(artifact: dict, stream_name: str, target_date: datetime) -> pd.DataFrame:
     base = _base_row(artifact, stream_name, target_date)
-    categories = artifact.get("category_options") or sorted(
-        artifact["df_for_inf"]["game_category"].dropna().astype(str).unique().tolist()
-    )
+    opportunity = artifact.get("opportunity_stats", {})
+    categories = opportunity.get("candidate_categories") or artifact.get("category_options") or []
     combos = list(itertools.product(categories, artifact["start_times"], artifact["durations"]))
     grid = pd.DataFrame(combos, columns=["game_category", "start_time_hour", "stream_duration"])
     rows = base.loc[base.index.repeat(len(grid))].reset_index(drop=True)
@@ -81,9 +80,60 @@ def _build_grid(artifact: dict, stream_name: str, target_date: datetime) -> pd.D
 def _score_grid(artifact: dict, stream_name: str, target_date: datetime) -> pd.DataFrame:
     grid = _build_grid(artifact, stream_name, target_date)
     models = artifact["models"]
-    grid["expected_subs"] = np.maximum(_predict(models["total_subscriptions"], grid), 0.0)
-    grid["expected_followers"] = _predict(models["net_follower_change"], grid)
-    grid["combined_score"] = grid["expected_subs"] + np.maximum(grid["expected_followers"], 0.0)
+    grid["model_subs"] = np.maximum(_predict(models["total_subscriptions"], grid), 0.0)
+    grid["model_followers"] = _predict(models["net_follower_change"], grid)
+
+    opportunity = artifact.get("opportunity_stats", {})
+    category_stats = opportunity.get("category_stats", {})
+    hour_factors = opportunity.get("hour_factors", {})
+    duration_factors = opportunity.get("duration_factors", {})
+    global_rates = opportunity.get("global_rates", {})
+    profile = opportunity.get("stream_profile", {})
+
+    base_subs = max(float(profile.get("recent_subs_per_stream", 1.0)), 0.25)
+    base_followers = max(float(profile.get("recent_positive_followers_per_stream", 0.25)), 0.1)
+    global_sub_rate = max(float(global_rates.get("fighting_subs_per_100_viewers", 1.0)), 1e-6)
+    global_follow_rate = max(float(global_rates.get("fighting_followers_per_100_viewers", 0.25)), 1e-6)
+
+    def _cat_value(category, key, fallback):
+        return float(category_stats.get(str(category), {}).get(key, fallback))
+
+    def _factor(mapping, key, metric):
+        item = mapping.get(int(key), mapping.get(str(int(key)), {}))
+        return float(item.get(metric, 1.0))
+
+    grid["category_rows"] = grid["game_category"].map(lambda c: int(category_stats.get(str(c), {}).get("rows", 0)))
+    grid["category_source"] = grid["game_category"].map(lambda c: category_stats.get(str(c), {}).get("source", "curated"))
+    grid["confidence"] = grid["game_category"].map(lambda c: _cat_value(c, "confidence", 0.12))
+    grid["category_sub_rate"] = grid["game_category"].map(
+        lambda c: _cat_value(c, "subs_per_100_viewers", global_sub_rate)
+    )
+    grid["category_follower_rate"] = grid["game_category"].map(
+        lambda c: _cat_value(c, "followers_per_100_viewers", global_follow_rate)
+    )
+    grid["hour_sub_factor"] = grid["start_time_hour"].map(lambda h: _factor(hour_factors, h, "subs"))
+    grid["hour_follower_factor"] = grid["start_time_hour"].map(lambda h: _factor(hour_factors, h, "followers"))
+    grid["duration_bucket"] = ((grid["stream_duration"].astype(float) / 60.0).round().clip(2, 7) * 60).astype(int)
+    grid["duration_sub_factor"] = grid["duration_bucket"].map(lambda d: _factor(duration_factors, d, "subs"))
+    grid["duration_follower_factor"] = grid["duration_bucket"].map(lambda d: _factor(duration_factors, d, "followers"))
+    grid["evidence_weight"] = 0.65 + 0.35 * grid["confidence"]
+
+    relative_sub = grid["category_sub_rate"] / global_sub_rate
+    relative_follower = grid["category_follower_rate"] / global_follow_rate
+    grid["opportunity_subs"] = (
+        base_subs * relative_sub * grid["hour_sub_factor"] * grid["duration_sub_factor"] * grid["evidence_weight"]
+    )
+    grid["opportunity_followers"] = (
+        base_followers
+        * relative_follower
+        * grid["hour_follower_factor"]
+        * grid["duration_follower_factor"]
+        * grid["evidence_weight"]
+    )
+    grid["expected_subs"] = 0.35 * grid["model_subs"] + 0.65 * grid["opportunity_subs"]
+    grid["expected_followers"] = 0.25 * np.maximum(grid["model_followers"], 0.0) + 0.75 * grid["opportunity_followers"]
+    grid["opportunity_index"] = 100.0 * relative_sub * grid["hour_sub_factor"] * grid["duration_sub_factor"]
+    grid["growth_score"] = grid["expected_subs"] + 0.6 * grid["expected_followers"] + 0.1 * grid["confidence"]
     return grid
 
 
@@ -91,7 +141,19 @@ def _best_by(grid: pd.DataFrame, group_col: str, metric: str, n: int = 10) -> li
     idx = grid.groupby(group_col)[metric].idxmax()
     cols = list(
         dict.fromkeys(
-            [group_col, "game_category", "start_time_hour", "stream_duration", "expected_subs", "expected_followers"]
+            [
+                group_col,
+                "game_category",
+                "start_time_hour",
+                "stream_duration",
+                "expected_subs",
+                "expected_followers",
+                "growth_score",
+                "opportunity_index",
+                "confidence",
+                "category_source",
+                "category_rows",
+            ]
         )
     )
     rows = grid.loc[idx, cols].sort_values(metric, ascending=False).head(n).copy()
@@ -99,17 +161,34 @@ def _best_by(grid: pd.DataFrame, group_col: str, metric: str, n: int = 10) -> li
     rows["duration_hours"] = (rows["stream_duration"].astype(float) / 60.0).round(1)
     rows["expected_subs"] = rows["expected_subs"].round(2)
     rows["expected_followers"] = rows["expected_followers"].round(2)
+    rows["growth_score"] = rows["growth_score"].round(2)
+    rows["opportunity_index"] = rows["opportunity_index"].round(0).astype(int)
+    rows["confidence"] = rows["confidence"].round(2)
     return rows.to_dict("records")
 
 
 def _top_rows(grid: pd.DataFrame, metric: str, n: int) -> list[dict]:
-    rows = grid.sort_values(metric, ascending=False).head(n).copy()
+    rows = grid.sort_values(metric, ascending=False).drop_duplicates("game_category").head(n).copy()
     rows["start_time"] = rows["start_time_hour"].astype(int).map(lambda h: f"{h:02d}:00")
     rows["duration_hours"] = (rows["stream_duration"].astype(float) / 60.0).round(1)
     rows["expected_subs"] = rows["expected_subs"].round(2)
     rows["expected_followers"] = rows["expected_followers"].round(2)
+    rows["growth_score"] = rows["growth_score"].round(2)
+    rows["opportunity_index"] = rows["opportunity_index"].round(0).astype(int)
+    rows["confidence"] = rows["confidence"].round(2)
     return rows[
-        ["game_category", "start_time", "duration_hours", "expected_subs", "expected_followers", "combined_score"]
+        [
+            "game_category",
+            "start_time",
+            "duration_hours",
+            "expected_subs",
+            "expected_followers",
+            "growth_score",
+            "opportunity_index",
+            "confidence",
+            "category_source",
+            "category_rows",
+        ]
     ].to_dict("records")
 
 
@@ -186,22 +265,32 @@ TEMPLATE = """
 
   {% if message %}<div class="notice">{{ message }}</div>{% endif %}
 
+  <h2>Top Growth Recommendations <span class="pill">fighting pool</span></h2>
+  <table>
+    <thead><tr><th>Game / Category</th><th>Start</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Follower Upside</th><th class="num">Score</th><th class="num">Index</th><th>Signal</th></tr></thead>
+    <tbody>
+    {% for row in top_growth %}
+      <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.expected_followers }}</td><td class="num">{{ row.growth_score }}</td><td class="num">{{ row.opportunity_index }}</td><td>{{ row.category_source }} · {{ row.category_rows }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
   <h2>Top Recommendations By Subscriptions <span class="pill">promoted</span></h2>
   <table>
-    <thead><tr><th>Game / Category</th><th>Start</th><th>Hours</th><th class="num">Subs</th><th class="num">Followers</th></tr></thead>
+    <thead><tr><th>Game / Category</th><th>Start</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Follower Upside</th><th class="num">Score</th><th class="num">Index</th><th>Signal</th></tr></thead>
     <tbody>
     {% for row in top_subs %}
-      <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.expected_followers }}</td></tr>
+      <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.expected_followers }}</td><td class="num">{{ row.growth_score }}</td><td class="num">{{ row.opportunity_index }}</td><td>{{ row.category_source }} · {{ row.category_rows }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
 
   <h2>Top Recommendations By Followers <span class="meta">experimental</span></h2>
   <table>
-    <thead><tr><th>Game / Category</th><th>Start</th><th>Hours</th><th class="num">Subs</th><th class="num">Followers</th></tr></thead>
+    <thead><tr><th>Game / Category</th><th>Start</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Follower Upside</th><th class="num">Score</th><th>Signal</th></tr></thead>
     <tbody>
     {% for row in top_followers %}
-      <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.expected_followers }}</td></tr>
+      <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.expected_followers }}</td><td class="num">{{ row.growth_score }}</td><td>{{ row.category_source }} · {{ row.category_rows }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -209,25 +298,25 @@ TEMPLATE = """
   <div class="grid">
     <section>
       <h2>Best Categories For Subs</h2>
-      <table><thead><tr><th>Category</th><th>Start</th><th>Hours</th><th class="num">Subs</th></tr></thead><tbody>
+      <table><thead><tr><th>Category</th><th>Start</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Index</th></tr></thead><tbody>
       {% for row in category_subs %}
-        <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td></tr>
+        <tr><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.opportunity_index }}</td></tr>
       {% endfor %}
       </tbody></table>
     </section>
     <section>
       <h2>Best Start Times For Subs</h2>
-      <table><thead><tr><th>Start</th><th>Category</th><th>Hours</th><th class="num">Subs</th></tr></thead><tbody>
+      <table><thead><tr><th>Start</th><th>Category</th><th>Hours</th><th class="num">Sub Upside</th><th class="num">Index</th></tr></thead><tbody>
       {% for row in hour_subs %}
-        <tr><td>{{ row.start_time }}</td><td>{{ row.game_category }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td></tr>
+        <tr><td>{{ row.start_time }}</td><td>{{ row.game_category }}</td><td>{{ row.duration_hours }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.opportunity_index }}</td></tr>
       {% endfor %}
       </tbody></table>
     </section>
     <section>
       <h2>Best Durations For Subs</h2>
-      <table><thead><tr><th>Hours</th><th>Category</th><th>Start</th><th class="num">Subs</th></tr></thead><tbody>
+      <table><thead><tr><th>Hours</th><th>Category</th><th>Start</th><th class="num">Sub Upside</th><th class="num">Index</th></tr></thead><tbody>
       {% for row in duration_subs %}
-        <tr><td>{{ row.duration_hours }}</td><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td class="num">{{ row.expected_subs }}</td></tr>
+        <tr><td>{{ row.duration_hours }}</td><td>{{ row.game_category }}</td><td>{{ row.start_time }}</td><td class="num">{{ row.expected_subs }}</td><td class="num">{{ row.opportunity_index }}</td></tr>
       {% endfor %}
       </tbody></table>
     </section>
@@ -258,6 +347,7 @@ def recommend_today():
             created_at="missing",
             top_n=10,
             message="recommender_artifacts.joblib is missing. Run python train_recommender.py first.",
+            top_growth=[],
             top_subs=[],
             top_followers=[],
             category_subs=[],
@@ -273,7 +363,16 @@ def recommend_today():
     except ValueError:
         top_n = 10
 
-    message = artifact.get("notes", {}).get("follower_model", "")
+    notes = artifact.get("notes", {})
+    message = " ".join(
+        note
+        for note in [
+            notes.get("subscription_model", ""),
+            notes.get("candidate_pool", ""),
+            notes.get("follower_model", ""),
+        ]
+        if note
+    )
     try:
         grid = _score_grid(artifact, stream, target_date)
     except Exception as exc:
@@ -281,14 +380,20 @@ def recommend_today():
         grid = pd.DataFrame()
 
     if grid.empty:
-        top_subs = top_followers = category_subs = hour_subs = duration_subs = tag_effects = []
+        top_growth = top_subs = top_followers = category_subs = hour_subs = duration_subs = tag_effects = []
     else:
+        top_growth = _top_rows(grid, "growth_score", top_n)
         top_subs = _top_rows(grid, "expected_subs", top_n)
         top_followers = _top_rows(grid, "expected_followers", top_n)
         category_subs = _best_by(grid, "game_category", "expected_subs", top_n)
         hour_subs = _best_by(grid, "start_time_hour", "expected_subs", top_n)
         duration_subs = _best_by(grid, "stream_duration", "expected_subs", top_n)
-        tag_effects = _tag_effects(artifact, stream, target_date, grid.sort_values("expected_subs", ascending=False).iloc[0])
+        tag_effects = _tag_effects(
+            artifact,
+            stream,
+            target_date,
+            grid.sort_values("expected_subs", ascending=False).iloc[0],
+        )
 
     return render_template_string(
         TEMPLATE,
@@ -298,6 +403,7 @@ def recommend_today():
         created_at=str(artifact.get("created_at_utc", ""))[:19],
         top_n=top_n,
         message=message,
+        top_growth=top_growth,
         top_subs=top_subs,
         top_followers=top_followers,
         category_subs=category_subs,

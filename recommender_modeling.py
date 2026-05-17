@@ -24,6 +24,56 @@ TARGET_STREAM = "thelegendyagami"
 DEFAULT_START_TIMES = list(range(24))
 DEFAULT_DURATIONS = [120, 180, 240, 300, 360, 420]
 DEFAULT_MAX_PEER_CCV = 1000.0
+BLOCKED_CATEGORIES = {
+    "just chatting",
+    "games + demos",
+    "the game awards",
+    "retro",
+    "marvel rivals",
+}
+FIGHTING_CATEGORY_CANDIDATES = [
+    "2xko",
+    "street fighter 6",
+    "tekken 8",
+    "guilty gear -strive-",
+    "blazblue: cross tag battle",
+    "super smash bros. ultimate",
+    "mortal kombat 1",
+    "mortal kombat 11",
+    "dragon ball fighterz",
+    "granblue fantasy versus: rising",
+    "under night in-birth ii sys:celes",
+    "the king of fighters xv",
+    "fatal fury: city of the wolves",
+    "marvel vs. capcom fighting collection: arcade classics",
+    "killer instinct",
+    "soulcalibur vi",
+    "skullgirls",
+    "rivals of aether ii",
+    "brawlhalla",
+    "virtua fighter 5 r.e.v.o.",
+]
+FIGHTING_KEYWORDS = (
+    "2xko",
+    "street fighter",
+    "tekken",
+    "guilty gear",
+    "blazblue",
+    "smash bros",
+    "mortal kombat",
+    "dragon ball fighterz",
+    "granblue fantasy versus",
+    "under night",
+    "king of fighters",
+    "fatal fury",
+    "marvel vs. capcom",
+    "killer instinct",
+    "soulcalibur",
+    "skullgirls",
+    "rivals of aether",
+    "brawlhalla",
+    "virtua fighter",
+)
 
 TARGET_CONFIGS = {
     "total_subscriptions": {
@@ -86,6 +136,13 @@ def normalize_tags(value) -> list[str]:
 
 def tags_to_text(value) -> str:
     return " ".join(normalize_tags(value))
+
+
+def is_fighting_category(category: str) -> bool:
+    cat = str(category).strip().lower()
+    if not cat or cat in BLOCKED_CATEGORIES:
+        return False
+    return cat in FIGHTING_CATEGORY_CANDIDATES or any(keyword in cat for keyword in FIGHTING_KEYWORDS)
 
 
 def load_daily_stats(database_url: str | None = None) -> pd.DataFrame:
@@ -213,6 +270,135 @@ def build_hgb_pipeline(X_train: pd.DataFrame) -> Pipeline:
     )
 
 
+def _safe_div(num, den):
+    den = np.maximum(np.asarray(den, dtype=float), 1.0)
+    return np.asarray(num, dtype=float) / den
+
+
+def _clipped_mean(values: pd.Series, fallback: float) -> float:
+    values = pd.Series(values).dropna().astype(float)
+    if values.empty:
+        return float(fallback)
+    upper = values.quantile(0.95)
+    return float(values.clip(upper=upper).mean())
+
+
+def _smoothed_rate(mean_value: float, n: int, prior: float, weight: int = 12) -> float:
+    return float((n * mean_value + weight * prior) / max(n + weight, 1))
+
+
+def build_opportunity_stats(df: pd.DataFrame, target_stream: str) -> dict:
+    metrics = df.copy()
+    metrics["positive_followers"] = np.maximum(metrics["net_follower_change"].astype(float), 0.0)
+    metrics["subs_per_100_viewers"] = 100.0 * _safe_div(
+        metrics["total_subscriptions"], metrics["avg_concurrent_viewers"]
+    )
+    metrics["followers_per_100_viewers"] = 100.0 * _safe_div(
+        metrics["positive_followers"], metrics["avg_concurrent_viewers"]
+    )
+    metrics["subs_per_100_viewers"] = metrics["subs_per_100_viewers"].clip(lower=0.0, upper=150.0)
+    metrics["followers_per_100_viewers"] = metrics["followers_per_100_viewers"].clip(lower=0.0, upper=150.0)
+    metrics["duration_bucket"] = (
+        (metrics["stream_duration"].astype(float) / 60.0).round().clip(2, 7) * 60
+    ).astype(int)
+    metrics["is_fighting_category"] = metrics["game_category"].map(is_fighting_category)
+
+    fighting = metrics[metrics["is_fighting_category"]].copy()
+    prior_frame = fighting if not fighting.empty else metrics
+    global_sub_rate = _clipped_mean(prior_frame["subs_per_100_viewers"], 0.0)
+    global_follow_rate = _clipped_mean(prior_frame["followers_per_100_viewers"], 0.0)
+    all_sub_rate = _clipped_mean(metrics["subs_per_100_viewers"], global_sub_rate)
+    all_follow_rate = _clipped_mean(metrics["followers_per_100_viewers"], global_follow_rate)
+    global_sub_rate = global_sub_rate or all_sub_rate or 1.0
+    global_follow_rate = global_follow_rate or all_follow_rate or 0.25
+
+    observed_fighting = sorted(
+        c
+        for c in metrics.loc[metrics["is_fighting_category"], "game_category"].dropna().astype(str).unique()
+        if c not in BLOCKED_CATEGORIES
+    )
+    candidates = sorted(set(FIGHTING_CATEGORY_CANDIDATES).union(observed_fighting))
+
+    category_stats = {}
+    for category in candidates:
+        rows = metrics[metrics["game_category"] == category]
+        n = int(len(rows))
+        streamers = int(rows["stream_name_lc"].nunique()) if n else 0
+        if n:
+            sub_mean = _clipped_mean(rows["subs_per_100_viewers"], global_sub_rate)
+            follow_mean = _clipped_mean(rows["followers_per_100_viewers"], global_follow_rate)
+            source = "observed"
+        else:
+            # No observed rows means no evidence. Keep curated games visible as
+            # exploration ideas, but do not let them outrank categories with data.
+            sub_mean = global_sub_rate * 0.65
+            follow_mean = global_follow_rate * 0.65
+            source = "curated"
+
+        confidence = min(1.0, np.log1p(n) / np.log1p(35)) * min(1.0, max(streamers, 1) / 3.0)
+        if source == "curated":
+            confidence = 0.05
+            smoothed_sub_rate = sub_mean
+            smoothed_follow_rate = follow_mean
+        else:
+            smoothed_sub_rate = _smoothed_rate(sub_mean, n, global_sub_rate)
+            smoothed_follow_rate = _smoothed_rate(follow_mean, n, global_follow_rate)
+
+        category_stats[category] = {
+            "rows": n,
+            "streamers": streamers,
+            "source": source,
+            "confidence": round(float(confidence), 3),
+            "subs_per_100_viewers": round(smoothed_sub_rate, 4),
+            "followers_per_100_viewers": round(smoothed_follow_rate, 4),
+        }
+
+    def factor_table(group_col: str) -> dict:
+        out = {}
+        for key, group in metrics.groupby(group_col):
+            n = int(len(group))
+            sub_mean = _clipped_mean(group["subs_per_100_viewers"], all_sub_rate)
+            follow_mean = _clipped_mean(group["followers_per_100_viewers"], all_follow_rate)
+            out[int(key)] = {
+                "subs": round(_smoothed_rate(sub_mean, n, all_sub_rate) / max(all_sub_rate, 1e-6), 4),
+                "followers": round(
+                    _smoothed_rate(follow_mean, n, all_follow_rate) / max(all_follow_rate, 1e-6), 4
+                ),
+                "rows": n,
+            }
+        return out
+
+    stream_rows = metrics[metrics["stream_name_lc"] == target_stream.lower()].sort_values(
+        ["stream_date", "stream_start_time"]
+    )
+    recent = stream_rows.tail(30)
+    profile = {
+        "recent_avg_ccv": round(float(recent["avg_concurrent_viewers"].mean()), 3),
+        "recent_subs_per_stream": round(float(recent["total_subscriptions"].mean()), 3),
+        "recent_positive_followers_per_stream": round(float(recent["positive_followers"].mean()), 3),
+        "recent_rows": int(len(recent)),
+    }
+
+    return {
+        "candidate_categories": candidates,
+        "blocked_categories": sorted(BLOCKED_CATEGORIES),
+        "category_stats": category_stats,
+        "hour_factors": factor_table("start_time_hour"),
+        "duration_factors": factor_table("duration_bucket"),
+        "global_rates": {
+            "fighting_subs_per_100_viewers": round(float(global_sub_rate), 4),
+            "fighting_followers_per_100_viewers": round(float(global_follow_rate), 4),
+            "all_subs_per_100_viewers": round(float(all_sub_rate), 4),
+            "all_followers_per_100_viewers": round(float(all_follow_rate), 4),
+        },
+        "stream_profile": profile,
+        "method": (
+            "Scores combine the validated Yagami-scale raw-sub model with smoothed category/hour/duration "
+            "opportunity rates learned from the broader streamer sample, then restrict candidates to fighting games."
+        ),
+    }
+
+
 def train_recommender_artifact(
     *,
     target_stream: str = TARGET_STREAM,
@@ -245,14 +431,9 @@ def train_recommender_artifact(
         }
         all_features.update(features)
 
+    opportunity_stats = build_opportunity_stats(df, target_stream)
     stream_rows = df[df["stream_name_lc"] == stream_lc]
-    category_options = (
-        stream_rows["game_category"]
-        .dropna()
-        .astype(str)
-        .value_counts()
-        .index.tolist()
-    )
+    category_options = opportunity_stats["candidate_categories"]
     tag_options = sorted({tag for tags in stream_rows["raw_tags"] for tag in normalize_tags(tags)})
 
     inf_cols = [
@@ -272,11 +453,13 @@ def train_recommender_artifact(
         "df_for_inf": df[inf_cols].copy(),
         "category_options": category_options,
         "tag_options": tag_options,
+        "opportunity_stats": opportunity_stats,
         "start_times": DEFAULT_START_TIMES,
         "durations": DEFAULT_DURATIONS,
         "notes": {
-            "subscription_model": "Promoted candidate: beats zero and rolling baselines on future thelegendyagami rows.",
-            "follower_model": "Experimental only: does not materially beat the zero baseline on future thelegendyagami rows.",
+            "subscription_model": "Growth score uses Yagami-scale validation plus broader streamer opportunity rates.",
+            "follower_model": "Followers are still experimental; current target-stream validation does not materially beat zero.",
+            "candidate_pool": "Recommendations are restricted to fighting games and exclude non-fighting categories.",
         },
     }
     joblib.dump(artifact, artifact_path, compress=3)
