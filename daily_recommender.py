@@ -213,6 +213,66 @@ def _strong_time_tests(grid: pd.DataFrame, n: int = 5) -> list[dict]:
     return _format_rows(rows)
 
 
+def _clock_label(start_hour: int, offset_minutes: int) -> str:
+    total = start_hour * 60 + offset_minutes
+    return f"{(total // 60) % 24:02d}:{total % 60:02d}"
+
+
+def _live_growth_cues(top_plan: list[dict]) -> list[dict]:
+    if not top_plan:
+        return []
+    top = top_plan[0]
+    start_hour = int(float(top.get("start_time_hour", DEFAULT_START_HOUR)))
+    duration = int(float(top.get("stream_duration", top.get("duration_hours", 4) * 60)))
+    close_start = max(duration - 15, 0)
+    mid_start = min(max(duration // 2, 60), max(duration - 45, 0))
+
+    return [
+        {
+            "window": f"{_clock_label(start_hour, 0)}-{_clock_label(start_hour, 15)}",
+            "focus": "First-chat retention",
+            "cue": "Greet new names, ask one easy FGC question, and make the follow CTA once.",
+        },
+        {
+            "window": f"{_clock_label(start_hour, mid_start)}-{_clock_label(start_hour, mid_start + 10)}",
+            "focus": "Midstream interaction",
+            "cue": "Run a prediction, poll, or match goal before attention drifts.",
+        },
+        {
+            "window": f"{_clock_label(start_hour, close_start)}-{_clock_label(start_hour, duration)}",
+            "focus": "Close and bridge",
+            "cue": "Remind the next 19:00 stream, ask for follows, and send a prepared raid.",
+        },
+    ]
+
+
+def _category_pulse_rows(artifact: dict, top_plan: list[dict], n: int = 4) -> list[dict]:
+    pulse = artifact.get("opportunity_stats", {}).get("category_pulse", {})
+    rows = []
+    for plan_row in top_plan[:n]:
+        category = plan_row["game_category"]
+        item = pulse.get(category, {})
+        if not item:
+            continue
+        days = item.get("days_since_seen")
+        rows.append(
+            {
+                "game_category": category,
+                "status": item.get("status", "Unknown"),
+                "pulse_score": item.get("pulse_score", 0),
+                "days_label": "no rows" if days is None else f"{days}d ago",
+                "recent_rows": item.get("recent_rows", 0),
+                "chatters_per_100_viewers": item.get("chatters_per_100_viewers", 0.0),
+                "reason": item.get("reason", ""),
+            }
+        )
+    return rows
+
+
+def _community_targets(artifact: dict, n: int = 4) -> list[dict]:
+    return (artifact.get("opportunity_stats", {}).get("community_targets") or [])[:n]
+
+
 TEMPLATE = """
 <!doctype html>
 <html lang="en">
@@ -238,6 +298,12 @@ TEMPLATE = """
     .metric span { display:block; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:0; margin-bottom:8px; }
     .metric strong { display:block; font-size:20px; line-height:1.2; margin-bottom:8px; }
     .metric small { color:var(--muted); line-height:1.35; }
+    .growth-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; margin:10px 0 8px; }
+    .growth-card { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:14px; min-height:160px; }
+    .growth-card h3 { margin:0 0 10px; font-size:15px; letter-spacing:0; }
+    .growth-card ul { margin:0; padding-left:18px; color:var(--muted); }
+    .growth-card li { margin:0 0 7px; line-height:1.35; }
+    .growth-card b { color:var(--text); font-weight:700; }
     .table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:6px; }
     table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden; }
     .table-wrap table { border:0; border-radius:0; }
@@ -246,7 +312,7 @@ TEMPLATE = """
     tr:last-child td { border-bottom:0; }
     .num { text-align:right; font-variant-numeric:tabular-nums; }
     .pill { display:inline-block; color:#06140b; background:var(--good); border-radius:999px; padding:2px 7px; font-size:12px; font-weight:700; }
-    @media (max-width: 820px) { main { padding:16px; } .summary { grid-template-columns:1fr; } th, td { font-size:13px; } }
+    @media (max-width: 820px) { main { padding:16px; } .summary, .growth-grid { grid-template-columns:1fr; } th, td { font-size:13px; } }
   </style>
 </head>
 <body>
@@ -297,6 +363,44 @@ TEMPLATE = """
         {% endif %}
       </div>
     </div>
+
+    <section>
+      <h2>Growth Cues <span class="meta">during stream</span></h2>
+      <div class="growth-grid">
+        <div class="growth-card">
+          <h3>Live CTA Clock</h3>
+          <ul>
+          {% for cue in live_cues %}
+            <li><b>{{ cue.window }}</b>: {{ cue.focus }}. {{ cue.cue }}</li>
+          {% endfor %}
+          </ul>
+        </div>
+        <div class="growth-card">
+          <h3>Category Pulse</h3>
+          {% if category_pulse %}
+            <ul>
+            {% for row in category_pulse[:3] %}
+              <li><b>{{ row.game_category }}</b>: {{ row.status }} / {{ row.pulse_score }} pulse, {{ row.days_label }}, {{ row.recent_rows }} recent rows.</li>
+            {% endfor %}
+            </ul>
+          {% else %}
+            <div class="empty">No category pulse data available.</div>
+          {% endif %}
+        </div>
+        <div class="growth-card">
+          <h3>Community Bridge</h3>
+          {% if community_targets %}
+            <ul>
+            {% for row in community_targets[:3] %}
+              <li><b>{{ row.stream_name }}</b>: {{ row.type }}, {{ row.categories }}, {{ row.reason }}</li>
+            {% endfor %}
+            </ul>
+          {% else %}
+            <div class="empty">No adjacent fighting-streamer targets yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
   {% endif %}
 
   <section>
@@ -370,6 +474,9 @@ def recommend_today():
             top_plan=[],
             time_tests=[],
             expansion_picks=[],
+            live_cues=[],
+            category_pulse=[],
+            community_targets=[],
         )
 
     stream = (request.args.get("stream") or artifact.get("target_stream") or TARGET_STREAM).strip()
@@ -391,11 +498,14 @@ def recommend_today():
         grid = pd.DataFrame()
 
     if grid.empty:
-        top_plan = time_tests = expansion_picks = []
+        top_plan = time_tests = expansion_picks = live_cues = category_pulse = community_targets = []
     else:
         top_plan = _top_default_plan(grid, top_n)
         time_tests = _strong_time_tests(grid, min(top_n, 5))
         expansion_picks = _expansion_picks(grid, min(top_n, 5))
+        live_cues = _live_growth_cues(top_plan)
+        category_pulse = _category_pulse_rows(artifact, top_plan, min(top_n, 4))
+        community_targets = _community_targets(artifact, 4)
 
     return render_template_string(
         TEMPLATE,
@@ -409,4 +519,7 @@ def recommend_today():
         top_plan=top_plan,
         time_tests=time_tests,
         expansion_picks=expansion_picks,
+        live_cues=live_cues,
+        category_pulse=category_pulse,
+        community_targets=community_targets,
     )

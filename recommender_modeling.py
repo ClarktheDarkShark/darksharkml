@@ -287,6 +287,121 @@ def _smoothed_rate(mean_value: float, n: int, prior: float, weight: int = 12) ->
     return float((n * mean_value + weight * prior) / max(n + weight, 1))
 
 
+def _chatters_per_100_viewers(rows: pd.DataFrame) -> float:
+    if rows.empty or "total_chatters" not in rows or "avg_concurrent_viewers" not in rows:
+        return 0.0
+    return float((100.0 * _safe_div(rows["total_chatters"], rows["avg_concurrent_viewers"])).clip(0, 300).mean())
+
+
+def _build_category_pulse(
+    metrics: pd.DataFrame,
+    candidates: list[str],
+    category_stats: dict,
+    global_sub_rate: float,
+) -> dict:
+    max_date = pd.to_datetime(metrics["stream_date"]).max()
+    if pd.isna(max_date):
+        max_date = pd.Timestamp.now()
+    recent_cutoff = max_date - pd.Timedelta(days=45)
+
+    pulse = {}
+    for category in candidates:
+        rows = metrics[metrics["game_category"] == category].copy()
+        stats = category_stats.get(category, {})
+        if rows.empty:
+            pulse[category] = {
+                "status": "Explore",
+                "days_since_seen": None,
+                "recent_rows": 0,
+                "latest_date": "",
+                "pulse_score": 24,
+                "chatters_per_100_viewers": 0.0,
+                "reason": "No direct rows yet; use only as a controlled experiment.",
+            }
+            continue
+
+        latest = pd.to_datetime(rows["stream_date"]).max()
+        days_since_seen = int(max((max_date - latest).days, 0))
+        recent_rows = int((pd.to_datetime(rows["stream_date"]) >= recent_cutoff).sum())
+        confidence = float(stats.get("confidence", 0.0))
+        sub_rate = float(stats.get("subs_per_100_viewers", global_sub_rate))
+        freshness = max(0.0, 1.0 - (days_since_seen / 90.0))
+        relative_sub = min(sub_rate / max(global_sub_rate, 1e-6), 2.0)
+        pulse_score = round(100.0 * (0.45 * confidence + 0.35 * freshness + 0.20 * (relative_sub / 2.0)))
+
+        if confidence >= 0.65 and days_since_seen <= 21:
+            status = "Fresh"
+        elif days_since_seen <= 60:
+            status = "Usable"
+        else:
+            status = "Stale"
+
+        pulse[category] = {
+            "status": status,
+            "days_since_seen": days_since_seen,
+            "recent_rows": recent_rows,
+            "latest_date": latest.strftime("%Y-%m-%d"),
+            "pulse_score": int(pulse_score),
+            "chatters_per_100_viewers": round(_chatters_per_100_viewers(rows), 1),
+            "reason": f"{recent_rows} fighting-pool rows in the last 45 days.",
+        }
+    return pulse
+
+
+def _build_community_targets(metrics: pd.DataFrame, target_stream: str) -> list[dict]:
+    stream_lc = target_stream.lower()
+    fighting = metrics[metrics["is_fighting_category"]].copy()
+    if fighting.empty:
+        return []
+
+    max_date = pd.to_datetime(fighting["stream_date"]).max()
+    recent_cutoff = max_date - pd.Timedelta(days=90)
+    target_rows = fighting[fighting["stream_name_lc"] == stream_lc]
+    target_categories = set(target_rows["game_category"].dropna().astype(str))
+    target_ccv = float(target_rows.tail(30)["avg_concurrent_viewers"].median())
+    if not np.isfinite(target_ccv) or target_ccv <= 0:
+        target_ccv = 10.0
+
+    targets = []
+    for stream_name, rows in fighting[fighting["stream_name_lc"] != stream_lc].groupby("stream_name_lc"):
+        categories = sorted(set(rows["game_category"].dropna().astype(str)))
+        overlap = sorted(set(categories).intersection(target_categories))
+        med_ccv = float(rows["avg_concurrent_viewers"].median())
+        latest = pd.to_datetime(rows["stream_date"]).max()
+        days_since_seen = int(max((max_date - latest).days, 0))
+        recent_rows = int((pd.to_datetime(rows["stream_date"]) >= recent_cutoff).sum())
+        category_fit = len(overlap) * 3.0 + min(len(categories), 3)
+        size_ratio = med_ccv / max(target_ccv, 1.0)
+        size_fit = max(0.0, 3.0 - abs(np.log2(max(size_ratio, 0.25))))
+        freshness_fit = max(0.0, 2.0 - days_since_seen / 45.0)
+        fit_score = category_fit + size_fit + freshness_fit + min(len(rows), 6) / 3.0
+        if size_ratio <= 3:
+            target_type = "Peer collab"
+        elif size_ratio <= 15:
+            target_type = "Reach target"
+        else:
+            target_type = "Trend watch"
+
+        targets.append(
+            {
+                "stream_name": str(rows["stream_name"].iloc[-1]),
+                "type": target_type,
+                "fit_score": round(float(fit_score), 2),
+                "median_ccv": round(med_ccv, 1),
+                "rows": int(len(rows)),
+                "recent_rows": recent_rows,
+                "days_since_seen": days_since_seen,
+                "categories": ", ".join(overlap or categories[:3]),
+                "reason": (
+                    f"{len(overlap)} shared {'category' if len(overlap) == 1 else 'categories'}; "
+                    f"{recent_rows} rows in last 90 days."
+                ),
+            }
+        )
+
+    return sorted(targets, key=lambda item: item["fit_score"], reverse=True)[:5]
+
+
 def build_opportunity_stats(df: pd.DataFrame, target_stream: str) -> dict:
     metrics = df.copy()
     metrics["positive_followers"] = np.maximum(metrics["net_follower_change"].astype(float), 0.0)
@@ -378,11 +493,15 @@ def build_opportunity_stats(df: pd.DataFrame, target_stream: str) -> dict:
         "recent_positive_followers_per_stream": round(float(recent["positive_followers"].mean()), 3),
         "recent_rows": int(len(recent)),
     }
+    category_pulse = _build_category_pulse(metrics, candidates, category_stats, global_sub_rate)
+    community_targets = _build_community_targets(metrics, target_stream)
 
     return {
         "candidate_categories": candidates,
         "blocked_categories": sorted(BLOCKED_CATEGORIES),
         "category_stats": category_stats,
+        "category_pulse": category_pulse,
+        "community_targets": community_targets,
         "hour_factors": factor_table("start_time_hour"),
         "duration_factors": factor_table("duration_bucket"),
         "global_rates": {
